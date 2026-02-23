@@ -9,12 +9,17 @@ Expected layout (all under dataset.paths.processed):
     ├── metadata.json                                    ← written by prepare_dataset.py
     ├── train/
     │   ├── climbing_down/
-    │   │   ├── proband10_climbingdown_00_00000_acc.pt   # (3, T)
-    │   │   ├── proband10_climbingdown_00_00000_gyr.pt   # (3, T)
+    │   │   ├── proband10_climbingdown_00_00000_acc.pt   # (3, freq_bins, time_frames) complex64
+    │   │   ├── proband10_climbingdown_00_00000_gyr.pt   # (3, freq_bins, time_frames) complex64
     │   │   └── ...
     │   └── ...
     └── val/
         └── ... (same structure)
+
+Each .pt file contains the torch.stft output for a 2.5-second window of one
+modality.  With the default config (n_fft=64, hop_length=32, win_length=64)
+the shape is (3, 33, time_frames) and dtype is complex64.
+STFT parameters are recorded in metadata.json under the 'stft' key.
 
 File naming convention (produced by prepare_dataset.py):
     {subject_name}_{record_key}_{pair_idx:02d}_{window_idx:05d}_{modality}.pt
@@ -28,9 +33,9 @@ Usage:
     train_loader, val_loader, meta = get_dataloaders(cfg)
 
     for acc, gyr, label in train_loader:
-        # acc  : (B, 3, T)  — accelerometer, channels-first
-        # gyr  : (B, 3, T)  — gyroscope, channels-first
-        # label: (B,)        — integer class index
+        # acc  : (B, 3, freq_bins, time_frames)  — accelerometer STFT, complex64
+        # gyr  : (B, 3, freq_bins, time_frames)  — gyroscope STFT, complex64
+        # label: (B,)                             — integer class index
         ...
 """
 
@@ -66,8 +71,8 @@ class HARDataset(Dataset):
     Paired accelerometer + gyroscope segment dataset.
 
     __getitem__ returns (acc_tensor, gyr_tensor, label):
-        acc_tensor : FloatTensor of shape (3, T)
-        gyr_tensor : FloatTensor of shape (3, T)
+        acc_tensor : ComplexTensor of shape (3, freq_bins, time_frames)  — STFT output
+        gyr_tensor : ComplexTensor of shape (3, freq_bins, time_frames)  — STFT output
         label      : int  (class index)
 
     Class index mapping (sorted alphabetically by directory name):

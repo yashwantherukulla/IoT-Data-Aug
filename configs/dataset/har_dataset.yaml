@@ -28,9 +28,14 @@ dataset:
   sensor:
     placement: upperarm
     modalities: [acc, gyr]
-
+  # n_fft ≈ 4 × win_length
   segmentation:
     window_seconds: 2.5
+    stft:
+      n_fft: 32
+      hop_length: 2
+      win_length: 32
+      window: hann
 
   split:
     num_train_subjects: 10

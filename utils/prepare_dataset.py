@@ -7,10 +7,14 @@ This script reproduces the paper's dataset construction constraints:
 - Activities: climbingdown, climbingup, jumping, running, walking
 - Split: subject-wise, 10 train / 5 val, reproducible
 - Segmentation: 2.5-second windows, using sampling rate parsed from README
+- Representation: each window is transformed via torch.stft before saving
 
 Important implementation note:
 Some RealWorld archives contain nested zip files (e.g. proband4 climbingup/down).
 The pipeline handles both direct CSV archives and nested recording archives.
+
+STFT output shape per saved .pt file: (3, n_fft // 2 + 1, time_frames) complex64.
+STFT parameters are read from dataset.segmentation.stft in the Hydra config.
 """
 
 from __future__ import annotations
@@ -277,6 +281,39 @@ def _sliding_windows(data: np.ndarray, win: int) -> list[np.ndarray]:
     return [data[s : s + win] for s in range(0, len(data) - win + 1, win)]
 
 
+def _apply_stft(
+    data: torch.Tensor,
+    n_fft: int,
+    hop_length: int,
+    win_length: int,
+    window: torch.Tensor,
+) -> torch.Tensor:
+    """Apply STFT to a (C, T) float32 sensor tensor.
+
+    Applies ``torch.stft`` independently over the C channel dimension
+    (torch handles 2-D batch input natively) and returns a complex64
+    tensor of shape ``(C, n_fft // 2 + 1, time_frames)``.
+
+    Args:
+        data:        Sensor tensor of shape ``(C, T)``.
+        n_fft:       FFT size.
+        hop_length:  Hop length between successive frames.
+        win_length:  Window length (must be ≤ n_fft).
+        window:      Analysis window tensor of length ``win_length``.
+
+    Returns:
+        Complex STFT tensor of shape ``(C, n_fft // 2 + 1, time_frames)``.
+    """
+    return torch.stft(
+        data,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        window=window,
+        return_complex=True,
+    )
+
+
 def _clean_activity_label(activity: str, activity_name_map: dict[str, str]) -> str:
     """Map a raw activity string to its cleaned label using the provided name map.
 
@@ -315,7 +352,8 @@ def preprocess_dataset(cfg: DictConfig) -> None:
     - Locates accelerometer and gyroscope zip archives.
     - Pairs recordings by canonical key.
     - Segments raw sensor data into non-overlapping windows.
-    - Saves each window as a (3, T) float32 PyTorch tensor.
+    - Applies ``torch.stft`` to each window, storing a complex64 tensor of
+      shape ``(3, n_fft // 2 + 1, time_frames)`` per .pt file.
     - Writes a ``metadata.json`` summary to the processed root.
 
     The processed directory is cleared and rebuilt on each run.
@@ -330,6 +368,18 @@ def preprocess_dataset(cfg: DictConfig) -> None:
     window_seconds = float(cfg.dataset.segmentation.window_seconds)
     n_train = int(cfg.dataset.split.num_train_subjects)
     n_val = int(cfg.dataset.split.num_val_subjects)
+
+    stft_cfg = cfg.dataset.segmentation.stft
+    stft_n_fft = int(stft_cfg.n_fft)
+    stft_hop_length = int(stft_cfg.hop_length)
+    stft_win_length = int(stft_cfg.win_length)
+    stft_window_fn: str = str(stft_cfg.window)
+    if stft_window_fn == "hann":
+        stft_window = torch.hann_window(stft_win_length)
+    elif stft_window_fn == "hamming":
+        stft_window = torch.hamming_window(stft_win_length)
+    else:
+        raise ValueError(f"Unsupported STFT window function: '{stft_window_fn}'")
 
     subjects = _list_subject_dirs(raw_root)
     train_subjects, val_subjects = _build_subject_split(subjects, int(cfg.seed), n_train, n_val)
@@ -389,8 +439,12 @@ def preprocess_dataset(cfg: DictConfig) -> None:
                 total_pairs[split] += 1
                 for w_idx in range(n_wins):
                     stem = f"{subject_name}_{acc_record.record_key}_{pair_idx:02d}_{w_idx:05d}"
-                    torch.save(torch.from_numpy(acc_wins[w_idx].T), out_dir / f"{stem}_acc.pt")
-                    torch.save(torch.from_numpy(gyr_wins[w_idx].T), out_dir / f"{stem}_gyr.pt")
+                    acc_tensor = torch.from_numpy(acc_wins[w_idx].T)  # (3, T)
+                    gyr_tensor = torch.from_numpy(gyr_wins[w_idx].T)  # (3, T)
+                    acc_stft = _apply_stft(acc_tensor, stft_n_fft, stft_hop_length, stft_win_length, stft_window)
+                    gyr_stft = _apply_stft(gyr_tensor, stft_n_fft, stft_hop_length, stft_win_length, stft_window)
+                    torch.save(acc_stft, out_dir / f"{stem}_acc.pt")
+                    torch.save(gyr_stft, out_dir / f"{stem}_gyr.pt")
                 total_windows[split] += n_wins
 
                 log.info(
@@ -412,6 +466,13 @@ def preprocess_dataset(cfg: DictConfig) -> None:
         "sensors": modalities,
         "placement": placement,
         "window_seconds": window_seconds,
+        "stft": {
+            "n_fft": stft_n_fft,
+            "hop_length": stft_hop_length,
+            "win_length": stft_win_length,
+            "window": stft_window_fn,
+            "freq_bins": stft_n_fft // 2 + 1,
+        },
         "split": {"train_subjects": train_subjects, "val_subjects": val_subjects},
         "window_counts": total_windows,
         "paired_recording_counts": total_pairs,

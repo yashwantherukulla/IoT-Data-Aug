@@ -1,0 +1,44 @@
+# ================================================================= #
+#  RealWorld HAR Dataset Config                                     #
+# ================================================================= #
+
+seed: 42
+
+dataset:
+  paths:
+    raw: "C:/Users/eruku/Tech/Everything AI/Projects/IoT Data Aug/data/raw/HAR"
+    processed: "C:/Users/eruku/Tech/Everything AI/Projects/IoT Data Aug/data/processed/HAR"
+
+  # Paper-defined dynamic activities.
+  activities:
+    - climbingdown
+    - climbingup
+    - jumping
+    - running
+    - walking
+
+  # Canonical output labels used for folder names.
+  activity_name_map:
+    climbingdown: climbing_down
+    climbingup: climbing_up
+    jumping: jumping
+    running: running
+    walking: walking
+
+  sensor:
+    placement: upperarm
+    modalities: [acc, gyr]
+
+  segmentation:
+    window_seconds: 2.5
+
+  split:
+    num_train_subjects: 10
+    num_val_subjects: 5
+
+  dataloader:
+    batch_size: 32
+    num_workers: 4
+    pin_memory: true
+    prefetch_factor: 2
+    drop_last: false

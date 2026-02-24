@@ -1,15 +1,16 @@
-# ================================================================= #
-#  RealWorld HAR Dataset Config                                     #
-# ================================================================= #
+# RealWorld HAR Dataset Configuration
 
 seed: 42
 
 dataset:
+  # Sampling frequency - hardcoded but easily changeable
+  sample_rate_hz: 50.0
+  
   paths:
-    raw: "C:/Users/eruku/Tech/Everything AI/Projects/IoT Data Aug/data/raw/HAR"
-    processed: "C:/Users/eruku/Tech/Everything AI/Projects/IoT Data Aug/data/processed/HAR"
+    raw: "data/raw/HAR"
+    processed: "data/processed/HAR"
 
-  # Paper-defined dynamic activities.
+  # Activities to process
   activities:
     - climbingdown
     - climbingup
@@ -17,33 +18,34 @@ dataset:
     - running
     - walking
 
-  # Canonical output labels used for folder names.
-  activity_name_map:
+  # Output label mapping
+  activity_map:
     climbingdown: climbing_down
     climbingup: climbing_up
     jumping: jumping
     running: running
     walking: walking
 
-  sensor:
-    placement: upperarm
-    modalities: [acc, gyr]
-    
-  segmentation:
-    window_seconds: 2.5
-    stft:
-      n_fft: 32
-      hop_length: 2
-      win_length: 32
-      window: hann
+  # Windowing
+  window_seconds: 2.5  # 2.5s @ 50Hz = 125 samples per window
 
+  # Spectrogram parameters
+  spectrogram:
+    fft_window_ms: 1000.0   # bigger the number, higher the frequency resolution (frequency bins = n_fft/2 + 1, so 1200ms @ 50Hz = 60 samples -> n_fft=128 -> 65 freq bins)
+    hop_ms: 10.0            # smaller the number, higher the time resolution (10ms = 0.5 samples @ 50Hz, will be rounded to 1 sample)
+    window: hann            # hann or hamming
+    center: true            # keep STFT frames centered on the signal (adds padding at start/end)
+    power: 1.0              # 2.0 = power, 1.0 = magnitude
+    log1p: true             # log(1+x) compression
+
+  # Train/val split
   split:
     num_train_subjects: 10
     num_val_subjects: 5
 
-  dataloader:
+  # DataLoader settings (used by training code, not prepare_dataset)
+  loader:
     batch_size: 32
     num_workers: 4
     pin_memory: true
-    prefetch_factor: 2
     drop_last: false

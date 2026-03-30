@@ -3,9 +3,6 @@
 seed: 42
 
 dataset:
-  # Sampling frequency - hardcoded but easily changeable
-  sample_rate_hz: 50.0
-  
   paths:
     raw: "data/raw/HAR"
     processed: "data/processed/HAR"
@@ -27,16 +24,24 @@ dataset:
     walking: walking
 
   # Windowing
-  window_seconds: 2.5  # 2.5s @ 50Hz = 125 samples per window
-
+  window_seconds: 2.5  # window length in seconds; samples per window = window_seconds * sample_rate_hz
+  
+  # Sampling frequency in Hz
+  sample_rate_hz: 100.0
   # Spectrogram parameters
   spectrogram:
-    fft_window_ms: 1000.0   # bigger the number, higher the frequency resolution (frequency bins = n_fft/2 + 1, so 1200ms @ 50Hz = 60 samples -> n_fft=128 -> 65 freq bins)
-    hop_ms: 10.0            # smaller the number, higher the time resolution (10ms = 0.5 samples @ 50Hz, will be rounded to 1 sample)
+    fft_window_ms: 1500.0   # larger -> higher frequency resolution; n_fft derived from window size
+    hop_ms: 20.0            # smaller -> higher time resolution (rounded to at least 1 sample)
     window: hann            # hann or hamming
-    center: true            # keep STFT frames centered on the signal (adds padding at start/end)
     power: 1.0              # 2.0 = power, 1.0 = magnitude
     log1p: true             # log(1+x) compression
+
+  # Differentiable metric extraction settings
+  metrics:
+    hps_downsample_factor: 2
+    hps_softmax_beta: 20.0
+    contrast_tail_ratio: 0.05
+    eps: 1.0e-8
 
   # Train/val split
   split:

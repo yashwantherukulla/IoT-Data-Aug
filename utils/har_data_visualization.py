@@ -1,4 +1,4 @@
-"""Visualize RealWorld-HAR spectrograms."""
+"""Visualize RealWorld-HAR spectrograms from precomputed sample files."""
 
 from __future__ import annotations
 
@@ -11,48 +11,44 @@ import torch
 import yaml
 
 
+METRIC_NAMES = ["temp_range", "f0_amp_hps", "contrast", "flatness", "entropy"]
+
+
 def load_config(config_path: pathlib.Path) -> dict[str, Any]:
     """Load config from YAML file."""
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def load_spectrogram(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load spectrogram and axes from .pt file."""
+def load_sample(path: pathlib.Path) -> dict[str, Any]:
+    """Load one sample from .pt file."""
     data = torch.load(path, weights_only=True)
-    return (
-        data["spectrogram"].numpy(),
-        data["freq_axis_hz"].numpy(),
-        data["time_axis_s"].numpy(),
-    )
+    return {
+        "spectrogram": data["spectrogram"].numpy(),
+        "freq": data["freq_axis_hz"].numpy(),
+        "time": data["time_axis_s"].numpy(),
+        "metrics": data.get("metrics", torch.zeros(5)).numpy(),
+        "label": int(data.get("label", -1)),
+        "activity": data.get("activity", path.parent.name),
+    }
 
 
-def get_samples(split_dir: pathlib.Path) -> list[dict]:
-    """Get one paired sample per activity class."""
+def get_samples(split_dir: pathlib.Path) -> list[dict[str, Any]]:
+    """Get one sample per activity class."""
     if not split_dir.exists():
         raise FileNotFoundError(f"Split directory not found: {split_dir}")
-    
+
     activities = sorted([d.name for d in split_dir.iterdir() if d.is_dir()])
-    samples: list[dict] = []
-    
+    samples: list[dict[str, Any]] = []
+
     for activity in activities:
         act_dir = split_dir / activity
-        acc_files = list(act_dir.glob("*_acc.pt"))
-        
-        if acc_files:
-            acc_path = acc_files[0]
-            gyr_path = acc_path.with_name(acc_path.name.replace("_acc.pt", "_gyr.pt"))
-            
-            if gyr_path.exists():
-                acc_spec, acc_freq, acc_time = load_spectrogram(acc_path)
-                gyr_spec, gyr_freq, gyr_time = load_spectrogram(gyr_path)
-                
-                samples.append({
-                    "activity": activity,
-                    "acc": (acc_spec, acc_freq, acc_time),
-                    "gyr": (gyr_spec, gyr_freq, gyr_time),
-                })
-    
+        sample_files = sorted(act_dir.glob("*.pt"))
+        if sample_files:
+            sample = load_sample(sample_files[0])
+            sample["activity"] = activity
+            samples.append(sample)
+
     return samples
 
 
@@ -61,17 +57,17 @@ def plot_spectrogram(
     spec: np.ndarray,
     freq: np.ndarray,
     time: np.ndarray,
-    channel: int,
     title: str | None = None,
-    show_xaxis: bool = False,
-    show_yaxis: bool = False,
 ) -> None:
-    """Plot single channel spectrogram."""
-    # Use percentile for robust color scaling
-    vmin, vmax = np.percentile(spec[channel], [2, 98])
+    """Plot one 2D spectrogram."""
+    # Collapse multi-channel spectrograms (C, F, T) -> (F, T) by averaging
+    if spec.ndim == 3:
+        spec = spec.mean(axis=0)
+
+    vmin, vmax = np.percentile(spec, [2, 98])
 
     ax.imshow(
-        spec[channel],
+        spec,
         origin="lower",
         aspect="auto",
         cmap="viridis",
@@ -79,74 +75,54 @@ def plot_spectrogram(
         vmax=vmax,
         extent=[time[0], time[-1], freq[0], freq[-1]],
     )
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Freq (Hz)")
 
     if title:
-        ax.set_title(title, fontsize=9)
+        ax.set_title(title, fontsize=10)
 
-    if show_xaxis:
-        ax.set_xlabel("Time (s)")
-    else:
-        ax.set_xticks([])
 
-    if not show_yaxis:
-        ax.set_yticks([])
+def _format_metrics(metrics: np.ndarray) -> str:
+    values = ", ".join(f"{name}={value:.3f}" for name, value in zip(METRIC_NAMES, metrics))
+    return values
 
 
 def main() -> None:
     """Main visualization function."""
-    # Load config to get paths
     config_path = pathlib.Path(__file__).parents[1] / "configs" / "dataset" / "har_dataset.yaml"
     cfg = load_config(config_path)
-    
+
     processed_root = pathlib.Path(cfg["dataset"]["paths"]["processed"])
-    split = "train"  # Could be made configurable
-    
+    split = "train"
+
     split_dir = processed_root / split
     samples = get_samples(split_dir)
-    
+
     if not samples:
         print("No samples found")
         return
-    
+
     n_classes = len(samples)
-    n_rows = 2  # acc x-channel + gyr x-channel only
-    cell_size = 3  # inches per cell (square)
-
-    fig, axes = plt.subplots(
-        n_rows, n_classes,
-        figsize=(cell_size * n_classes, cell_size * n_rows),
-    )
-    if n_classes == 1:
-        axes = axes.reshape(-1, 1)
-
-    sensor_labels = ["Acc x", "Gyr x"]
+    fig, axes = plt.subplots(1, n_classes, figsize=(4 * n_classes, 4), squeeze=False)
 
     for col, sample in enumerate(samples):
-        acc_spec, acc_freq, acc_time = sample["acc"]
-        gyr_spec, gyr_freq, gyr_time = sample["gyr"]
+        plot_spectrogram(
+            axes[0, col],
+            sample["spectrogram"],
+            sample["freq"],
+            sample["time"],
+            title=f"{sample['activity']} (label={sample['label']})",
+        )
+        axes[0, col].text(
+            0.01,
+            -0.24,
+            _format_metrics(sample["metrics"]),
+            transform=axes[0, col].transAxes,
+            fontsize=8,
+            va="top",
+        )
 
-        specs = [
-            (acc_spec, acc_freq, acc_time),
-            (gyr_spec, gyr_freq, gyr_time),
-        ]
-
-        for row, (spec, freq, time) in enumerate(specs):
-            is_bottom = row == n_rows - 1
-            is_left = col == 0
-
-            plot_spectrogram(
-                axes[row, col],
-                spec, freq, time,
-                channel=0,
-                title=sample["activity"] if row == 0 else None,
-                show_xaxis=is_bottom,
-                show_yaxis=is_left,
-            )
-
-            if is_left:
-                axes[row, col].set_ylabel(sensor_labels[row])
-    
-    plt.suptitle(f"RealWorld HAR Spectrograms ({split})")
+    plt.suptitle(f"RealWorld HAR Spectrograms + Metrics ({split})")
     plt.tight_layout()
     plt.show()
 

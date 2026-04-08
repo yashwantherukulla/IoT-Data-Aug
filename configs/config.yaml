@@ -1,80 +1,39 @@
 # ================================================================= #
-#  Main Config  —  IoT Data Augmentation Pipeline                   #
+#  CGDAP v2.1 — Root Hydra Config                                   #
 # ================================================================= #
-# Hydra config-group layout:
 #
-#   conf/
-#   ├── config.yaml             ← you are here
+# Config-group layout:
+#   configs/
+#   ├── config.yaml              ← you are here
 #   ├── dataset/
 #   │   └── har_dataset.yaml
-#   ├── model/                  ← add your model configs here
-#   │   └── (e.g. unet.yaml)
-#   ├── training/               ← optimizer, scheduler, loss
-#   │   └── (e.g. default.yaml)
-#   ├── augmentation/           ← data augmentation / transforms
-#   │   └── (e.g. stft.yaml)
-#   └── logging/                ← experiment tracking
-#       └── (e.g. wandb.yaml / tensorboard.yaml)
+#   ├── model/
+#   │   ├── cgdap.yaml           # MultimodalCGDAP wrapper
+#   │   └── unet.yaml            # ConditionalUNet defaults
+#   ├── training/
+#   │   └── default.yaml
+#   ├── augmentation/
+#   │   └── default.yaml
+#   └── logging/
+#       ├── console.yaml
+#       └── wandb.yaml           # optional — swap in via CLI
 #
-# Override anything from the CLI without touching YAML:
-#   python prepare_dataset.py dataset.segmentation.window_seconds=5.0
-#   python prepare_dataset.py dataset.split.num_train_subjects=8 seed=0
-#   python prepare_dataset.py dataset.pipeline.run_clean=false
+# CLI overrides (no YAML edits needed):
+#   uv run python scripts/train.py training.max_epochs=50
+#   uv run python scripts/train.py model.unet.base_channels=64
+#   uv run python scripts/train.py logging=wandb
 # ================================================================= #
 
 defaults:
-  - dataset:      har_dataset
-  - model:        ???          # fill in once you have a model config
-  - training:     ???          # fill in once you have a training config
-  - augmentation: ???          # fill in once you have augmentation config
-  - logging:      ???          # wandb or tensorboard
+  - dataset: har_dataset
+  - model: cgdap
+  - training: default
+  - augmentation: default
+  - logging: console
   - _self_
 
 # ----------------------------------------------------------------- #
 #  Global                                                            #
 # ----------------------------------------------------------------- #
 seed: 42
-
-experiment_name: "iot_data_aug_har"   # used by logging / checkpoint dirs
-
-# ----------------------------------------------------------------- #
-#  Model  (placeholder — fill in via conf/model/unet.yaml etc.)     #
-# ----------------------------------------------------------------- #
-# model:
-#   name: dual_unet_diffusion
-#   in_channels: 3
-#   ...
-
-# ----------------------------------------------------------------- #
-#  Training  (placeholder)                                           #
-# ----------------------------------------------------------------- #
-# training:
-#   epochs: 100
-#   optimizer:
-#     name: adamw
-#     lr: 1e-4
-#     weight_decay: 1e-5
-#   scheduler:
-#     name: cosine
-#     T_max: 100
-#   loss:
-#     name: diffusion_mse
-
-# ----------------------------------------------------------------- #
-#  Augmentation  (placeholder)                                       #
-# ----------------------------------------------------------------- #
-# augmentation:
-#   stft:
-#     n_fft: 64
-#     hop_length: 16
-#   normalize: true
-
-# ----------------------------------------------------------------- #
-#  Logging  (placeholder — uncomment whichever you end up using)     #
-# ----------------------------------------------------------------- #
-# logging:
-#   backend: wandb          # or: tensorboard
-#   project: iot_data_aug
-#   entity: your_wandb_entity
-#   log_every_n_steps: 10
-#   save_dir: outputs/
+experiment_name: "cgdap_v2_har"

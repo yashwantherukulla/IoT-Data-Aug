@@ -14,3 +14,4 @@ generate_code
 !src/data/
 !src/data/**
 outputs
+.env

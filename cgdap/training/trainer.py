@@ -11,10 +11,95 @@ import torch.optim as optim
 from omegaconf import DictConfig, OmegaConf
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from cgdap.data.dataset import build_label_map, make_modality_loader, make_paired_loader
+from cgdap.data.dataset import build_label_map, make_paired_loader
 from cgdap.models.cgdap import MultimodalCGDAP
 
+try:
+    from tqdm.auto import tqdm, trange
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+
+    class _NullProgress:
+        def __init__(self, iterable):
+            self.iterable = iterable
+
+        def __iter__(self):
+            return iter(self.iterable)
+
+        def set_postfix(self, *_args, **_kwargs) -> None:
+            return None
+
+    def tqdm(iterable, *args, **kwargs):  # type: ignore[no-redef]
+        return _NullProgress(iterable)
+
+    def trange(*args, **kwargs):  # type: ignore[no-redef]
+        return _NullProgress(range(*args))
+
 log = logging.getLogger(__name__)
+
+
+class ExperimentLogger:
+    """Thin logging wrapper that keeps console and W&B runs on one code path."""
+
+    def __init__(self, cfg: DictConfig) -> None:
+        self.cfg = cfg
+        self.backend = str(cfg.logging.backend).lower()
+        self.run: Any | None = None
+
+        if self.backend == "console":
+            return
+        if self.backend != "wandb":
+            raise ValueError(f"Unknown logging backend: {self.backend!r}")
+
+        try:
+            import wandb
+        except ImportError as exc:
+            raise ImportError(
+                "W&B logging requested, but `wandb` is not installed. "
+                "Run `uv sync` after pulling the latest changes."
+            ) from exc
+
+        save_dir = pathlib.Path(cfg.logging.save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        init_kwargs = {
+            "project": cfg.logging.project,
+            "config": OmegaConf.to_container(cfg, resolve=True),
+            "dir": str(save_dir),
+            "mode": str(cfg.logging.get("mode", "online")),
+            "name": cfg.logging.get("name") or cfg.experiment_name,
+        }
+        for field in ("entity", "group", "notes", "tags"):
+            value = cfg.logging.get(field)
+            if value not in (None, ""):
+                init_kwargs[field] = value
+
+        self.run = wandb.init(**init_kwargs)
+        wandb.define_metric("epoch")
+        wandb.define_metric("train_step/global_step")
+        wandb.define_metric("train_step/*", step_metric="train_step/global_step")
+        wandb.define_metric("train_epoch/*", step_metric="epoch")
+        wandb.define_metric("val_epoch/*", step_metric="epoch")
+
+    @property
+    def enabled(self) -> bool:
+        return self.run is not None
+
+    def log(self, metrics: dict[str, float], *, step: int | None = None) -> None:
+        if not self.enabled:
+            return
+        import wandb
+
+        wandb.log(metrics, step=step)
+
+    def finish(self) -> None:
+        if not self.enabled:
+            return
+        import wandb
+
+        wandb.finish()
+        self.run = None
 
 
 def build_optimizer(model: torch.nn.Module, cfg: DictConfig) -> optim.Optimizer:
@@ -66,6 +151,10 @@ class CGDAPTrainer:
         self.cfg = cfg
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         log.info("Using device: %s", self.device)
+        if not TQDM_AVAILABLE:
+            log.warning("`tqdm` is not installed; progress bars are disabled until you run `uv sync`.")
+        self.experiment_logger = ExperimentLogger(cfg)
+        self.global_step = 0
 
         # Paths
         processed_root = pathlib.Path(cfg.dataset.paths.processed)
@@ -108,7 +197,7 @@ class CGDAPTrainer:
         self.scheduler = build_scheduler(self.optimizer, cfg)
 
         self.max_epochs: int = cfg.training.max_epochs
-        self.log_every: int = cfg.training.log_every_n_steps
+        self.log_every: int = int(cfg.logging.get("log_every_n_steps", cfg.training.log_every_n_steps))
         self.save_every: int = cfg.training.save_every_n_epochs
         self.val_every: int = cfg.training.val_every_n_epochs
         self.n_classes: int = n_classes
@@ -127,7 +216,14 @@ class CGDAPTrainer:
         totals: dict[str, float] = {}
         steps = 0
 
-        for batch in self.train_loader:
+        progress = tqdm(
+            self.train_loader,
+            total=len(self.train_loader),
+            desc=f"Train {epoch + 1}/{self.max_epochs}",
+            leave=False,
+            dynamic_ncols=True,
+        )
+        for batch in progress:
             # Move to device
             for mod in self.cfg.dataset.modalities:
                 batch[mod]["spectrogram"] = batch[mod]["spectrogram"].to(self.device)
@@ -143,6 +239,26 @@ class CGDAPTrainer:
             for k, v in loss_dict.items():
                 totals[k] = totals.get(k, 0.0) + v.item()
             steps += 1
+            self.global_step += 1
+            lr = float(self.optimizer.param_groups[0]["lr"])
+            progress.set_postfix(
+                loss=f"{loss_dict['L_total'].item():.4f}",
+                lg=f"{loss_dict['L_G'].item():.4f}",
+                lm=f"{loss_dict['L_metric'].item():.4f}",
+                lr=f"{lr:.2e}",
+            )
+
+            self.experiment_logger.log(
+                {
+                    "epoch": epoch,
+                    "train_step/global_step": self.global_step,
+                    "train_step/L_total": loss_dict["L_total"].item(),
+                    "train_step/L_G": loss_dict["L_G"].item(),
+                    "train_step/L_metric": loss_dict["L_metric"].item(),
+                    "train_step/lr": lr,
+                },
+                step=self.global_step,
+            )
 
             if steps % self.log_every == 0:
                 log.info(
@@ -156,6 +272,8 @@ class CGDAPTrainer:
         if self.scheduler is not None:
             self.scheduler.step()
 
+        if steps == 0:
+            raise RuntimeError("Training loader produced zero batches.")
         return {k: v / steps for k, v in totals.items()}
 
     @torch.no_grad()
@@ -164,7 +282,14 @@ class CGDAPTrainer:
         totals: dict[str, float] = {}
         steps = 0
 
-        for batch in self.val_loader:
+        progress = tqdm(
+            self.val_loader,
+            total=len(self.val_loader),
+            desc=f"Val {epoch + 1}/{self.max_epochs}",
+            leave=False,
+            dynamic_ncols=True,
+        )
+        for batch in progress:
             for mod in self.cfg.dataset.modalities:
                 batch[mod]["spectrogram"] = batch[mod]["spectrogram"].to(self.device)
                 batch[mod]["metrics"] = batch[mod]["metrics"].to(self.device)
@@ -174,7 +299,14 @@ class CGDAPTrainer:
             for k, v in loss_dict.items():
                 totals[k] = totals.get(k, 0.0) + v.item()
             steps += 1
+            progress.set_postfix(
+                loss=f"{loss_dict['L_total'].item():.4f}",
+                lg=f"{loss_dict['L_G'].item():.4f}",
+                lm=f"{loss_dict['L_metric'].item():.4f}",
+            )
 
+        if steps == 0:
+            raise RuntimeError("Validation loader produced zero batches.")
         return {k: v / steps for k, v in totals.items()}
 
     def save_checkpoint(self, epoch: int, metrics: dict[str, float]) -> None:
@@ -195,22 +327,36 @@ class CGDAPTrainer:
         log.info("Starting CGDAP training | experiment: %s", self.cfg.experiment_name)
         log.info("Config:\n%s", OmegaConf.to_yaml(self.cfg))
         log.info("=" * 60)
-
-        for epoch in range(self.max_epochs):
-            train_metrics = self.train_epoch(epoch)
-            log.info(
-                "Epoch %d | Train L_total=%.4f L_G=%.4f L_metric=%.4f",
-                epoch, train_metrics["L_total"], train_metrics["L_G"], train_metrics["L_metric"],
-            )
-
-            if epoch % self.val_every == 0:
-                val_metrics = self.val_epoch(epoch)
+        epoch_progress = trange(self.max_epochs, desc="Epochs", dynamic_ncols=True)
+        try:
+            for epoch in epoch_progress:
+                train_metrics = self.train_epoch(epoch)
+                train_log = {f"train_epoch/{k}": v for k, v in train_metrics.items()}
+                train_log["epoch"] = epoch
+                train_log["train_epoch/lr"] = float(self.optimizer.param_groups[0]["lr"])
+                self.experiment_logger.log(train_log, step=self.global_step)
                 log.info(
-                    "Epoch %d | Val   L_total=%.4f L_G=%.4f L_metric=%.4f",
-                    epoch, val_metrics["L_total"], val_metrics["L_G"], val_metrics["L_metric"],
+                    "Epoch %d | Train L_total=%.4f L_G=%.4f L_metric=%.4f",
+                    epoch, train_metrics["L_total"], train_metrics["L_G"], train_metrics["L_metric"],
                 )
 
-            if epoch % self.save_every == 0 or epoch == self.max_epochs - 1:
-                self.save_checkpoint(epoch, train_metrics)
+                display_metrics = {"train": f"{train_metrics['L_total']:.4f}"}
+                if epoch % self.val_every == 0:
+                    val_metrics = self.val_epoch(epoch)
+                    val_log = {f"val_epoch/{k}": v for k, v in val_metrics.items()}
+                    val_log["epoch"] = epoch
+                    self.experiment_logger.log(val_log, step=self.global_step)
+                    log.info(
+                        "Epoch %d | Val   L_total=%.4f L_G=%.4f L_metric=%.4f",
+                        epoch, val_metrics["L_total"], val_metrics["L_G"], val_metrics["L_metric"],
+                    )
+                    display_metrics["val"] = f"{val_metrics['L_total']:.4f}"
+
+                epoch_progress.set_postfix(display_metrics)
+
+                if epoch % self.save_every == 0 or epoch == self.max_epochs - 1:
+                    self.save_checkpoint(epoch, train_metrics)
+        finally:
+            self.experiment_logger.finish()
 
         log.info("Training complete.")

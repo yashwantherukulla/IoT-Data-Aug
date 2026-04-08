@@ -1,0 +1,14 @@
+# ================================================================= #
+#  Logging Configuration - Weights & Biases                         #
+# ================================================================= #
+
+backend: wandb
+project: cgdap_har
+entity: null
+name: ${experiment_name}
+group: null
+tags: []
+notes: null
+mode: online
+log_every_n_steps: 5
+save_dir: "outputs/logs"

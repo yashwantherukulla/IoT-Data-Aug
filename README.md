@@ -49,7 +49,7 @@ The repository also contains augmentation and sampling primitives, but there is 
 |-- configs/
 |   |-- augmentation/      # augmentation modes and ranges
 |   |-- dataset/           # dataset paths, modalities, activities, STFT, split
-|   |-- logging/           # console logging config
+|   |-- logging/           # console and W&B logging config
 |   |-- model/             # CGDAP architecture config
 |   |-- training/          # optimizer, scheduler, epochs, checkpointing
 |   `-- config.yaml        # root Hydra config
@@ -230,6 +230,7 @@ Useful config files:
 - `configs/training/default.yaml`
 - `configs/augmentation/default.yaml`
 - `configs/logging/console.yaml`
+- `configs/logging/wandb.yaml`
 
 Hydra overrides work from the command line, for example:
 
@@ -251,6 +252,8 @@ The main dependencies are declared in `pyproject.toml`:
 - `hydra-core`
 - `omegaconf`
 - `torch`
+- `tqdm`
+- `wandb`
 - `numpy`
 - `matplotlib`
 - `pandas`
@@ -324,10 +327,23 @@ Training outputs:
 
 - Hydra run logs under `outputs/<date>/<time>/`
 - checkpoints under `outputs/checkpoints/<experiment_name>/`
+- live `tqdm` progress bars for epochs, training, and validation
 
 Default experiment name:
 
 - `cgdap_v2_har`
+
+Enable Weights & Biases logging:
+
+```bash
+uv run python scripts/train.py logging=wandb
+```
+
+Run W&B in offline mode:
+
+```bash
+uv run python scripts/train.py logging=wandb logging.mode=offline
+```
 
 ### 4. Evaluate Downstream HAR Classifiers
 

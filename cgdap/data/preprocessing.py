@@ -181,6 +181,24 @@ def segment_windows(data: np.ndarray, window_size: int) -> Iterator[np.ndarray]:
         yield data[start : start + window_size]
 
 
+def _resolve_sensor_zip(subject_dir: pathlib.Path, modality: str, activity: str) -> pathlib.Path | None:
+    """Find a sensor zip in either the original or cleaned raw layout.
+
+    Supported layouts:
+        <subject>/data/acc_<activity>_csv.zip
+        <subject>/acc_<activity>_csv.zip
+    """
+    filename = f"{modality}_{activity}_csv.zip"
+    candidates = [
+        subject_dir / "data" / filename,
+        subject_dir / filename,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Subject splitting
 # ---------------------------------------------------------------------------
@@ -231,11 +249,17 @@ def process_subject(
     )
 
     for activity in activities:
-        acc_zip = subject_dir / "data" / f"acc_{activity}_csv.zip"
-        gyr_zip = subject_dir / "data" / f"gyr_{activity}_csv.zip"
+        acc_zip = _resolve_sensor_zip(subject_dir, "acc", activity)
+        gyr_zip = _resolve_sensor_zip(subject_dir, "gyr", activity)
 
-        if not (acc_zip.exists() and gyr_zip.exists()):
-            log.warning("Missing zip for %s/%s, skipping", subject_dir.name, activity)
+        if acc_zip is None or gyr_zip is None:
+            log.warning(
+                "Missing zip for %s/%s, skipping (expected under %s/data or %s)",
+                subject_dir.name,
+                activity,
+                subject_dir.name,
+                subject_dir.name,
+            )
             continue
 
         try:

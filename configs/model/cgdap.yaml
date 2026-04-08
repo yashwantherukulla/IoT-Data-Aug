@@ -1,5 +1,5 @@
 # ================================================================= #
-#  CGDAP Model Config — MultimodalCGDAP wrapper                      #
+#  CGDAP Model Config - MultimodalCGDAP wrapper                      #
 # ================================================================= #
 #
 # To switch architecture: override via CLI or create a new config.
@@ -7,57 +7,56 @@
 #   uv run python scripts/train.py model.schedule=flow   (future)
 # ================================================================= #
 
-model:
-  name: multimodal_cgdap
+name: multimodal_cgdap
 
-  # --- Component selection (maps to registered class names) --------
-  denoiser:  unet            # unet | dit (future) | latent_unet (future)
-  schedule:  ddpm            # ddpm | flow_match (future)
-  embedder:  cross_attention # cross_attention | adaLN (future for DiT)
+# --- Component selection (maps to registered class names) --------
+denoiser:  unet            # unet | dit (future) | latent_unet (future)
+schedule:  ddpm            # ddpm | flow_match (future)
+embedder:  cross_attention # cross_attention | adaLN (future for DiT)
 
-  # --- Modality config (mirrors dataset.modalities) ----------------
-  modalities:
-    - acc
-    - gyr
-  in_channels:    3          # channels per modality spectrogram
-  num_classes:    5          # number of HAR activity classes
+# --- Modality config (mirrors dataset.modalities) ----------------
+modalities:
+  - acc
+  - gyr
+in_channels:    3          # channels per modality spectrogram
+num_classes:    5          # number of HAR activity classes
 
-  # --- Condition embedder ------------------------------------------
-  condition:
-    n_metrics:     5
-    d_model:       256
-    n_heads:       4
-    n_cond_tokens: 8         # metric + class tokens projected to this sequence length
-    dropout:       0.1
+# --- Condition embedder ------------------------------------------
+condition:
+  n_metrics:     5
+  d_model:       256
+  n_heads:       4
+  n_cond_tokens: 8         # metric + class tokens projected to this sequence length
+  dropout:       0.1
 
-  # --- U-Net (active denoiser) ------------------------------------
-  unet:
-    base_channels:     128   # set to 32 for smoke tests
-    channel_multipliers: [1, 2, 4]   # per resolution
-    n_res_blocks:      2
-    temb_dim:          512
-    # depths at which cross-attention is applied (0=bottleneck, 1=deepest skip)
-    cross_attn_depths: [0, 1]
-    dropout:           0.1
+# --- U-Net (active denoiser) ------------------------------------
+unet:
+  base_channels:     128   # set to 32 for smoke tests
+  channel_multipliers: [1, 2, 4]   # per resolution
+  n_res_blocks:      2
+  temb_dim:          512
+  # depths at which cross-attention is applied (0=bottleneck, 1=deepest skip)
+  cross_attn_depths: [0, 1]
+  dropout:           0.1
 
-  # --- DDPM schedule -----------------------------------------------
-  ddpm:
-    train_timesteps:  1000
-    beta_start:       1.0e-4
-    beta_end:         2.0e-2
-    # How many timesteps to sample per training step
-    num_train_steps:  10
-    # Inference DDIM-style steps
-    num_infer_steps:  100
+# --- DDPM schedule -----------------------------------------------
+ddpm:
+  train_timesteps:  1000
+  beta_start:       1.0e-4
+  beta_end:         2.0e-2
+  # How many timesteps to sample per training step
+  num_train_steps:  10
+  # Inference DDIM-style steps
+  num_infer_steps:  100
 
-  # --- DiT scaffold (not yet implemented — future) ----------------
-  # dit:
-  #   patch_size: 4
-  #   depth: 12
-  #   hidden_size: 768
-  #   num_heads: 12
+# --- DiT scaffold (not yet implemented - future) ----------------
+# dit:
+#   patch_size: 4
+#   depth: 12
+#   hidden_size: 768
+#   num_heads: 12
 
-  # --- Flow matching scaffold (not yet implemented — future) ------
-  # flow_match:
-  #   sigma_min: 1.0e-4
-  #   num_steps: 50
+# --- Flow matching scaffold (not yet implemented - future) ------
+# flow_match:
+#   sigma_min: 1.0e-4
+#   num_steps: 50

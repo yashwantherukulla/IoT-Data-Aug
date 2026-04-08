@@ -2,57 +2,56 @@
 #  Augmentation Engine Configuration                                 #
 # ================================================================= #
 
-augmentation:
-  # Which mode to use: interpolation | disturbance | domain_instruction
-  mode: disturbance
+# Which mode to use: interpolation | disturbance | domain_instruction
+mode: disturbance
 
-  # ---- Interpolation ----------------------------------------------
-  interpolation:
-    # Beta distribution for mixing coefficient (truncated normal)
-    beta_mean:   0.5
-    beta_std:    0.1
-    beta_low:    0.0
-    beta_high:   1.0
+# ---- Interpolation ----------------------------------------------
+interpolation:
+  # Beta distribution for mixing coefficient (truncated normal)
+  beta_mean:   0.5
+  beta_std:    0.1
+  beta_low:    0.0
+  beta_high:   1.0
 
-  # ---- Disturbance ------------------------------------------------
-  disturbance:
-    # Per-metric maximum perturbation fraction (uniform ±r)
-    temporal_range:  0.10
-    f0_amplitude:    0.10
-    contrast:        0.10
-    flatness:        0.05
-    entropy:         0.05
+# ---- Disturbance ------------------------------------------------
+disturbance:
+  # Per-metric maximum perturbation fraction (uniform +/-r)
+  temporal_range:  0.10
+  f0_amplitude:    0.10
+  contrast:        0.10
+  flatness:        0.05
+  entropy:         0.05
 
-  # ---- Domain Instruction -----------------------------------------
-  # Expert-defined metric ranges per activity (used for domain mode)
-  domain_instruction:
-    walking:
-      temporal_range: [0.5, 2.0]
-      f0_amplitude:   [0.1, 0.8]
-      contrast:       [0.3, 1.5]
-      flatness:       [0.01, 0.3]
-      entropy:        [5.0, 12.0]
-    running:
-      temporal_range: [1.0, 4.0]
-      f0_amplitude:   [0.2, 1.5]
-      contrast:       [0.5, 2.5]
-      flatness:       [0.01, 0.2]
-      entropy:        [6.0, 13.0]
-    jumping:
-      temporal_range: [1.5, 5.0]
-      f0_amplitude:   [0.3, 2.0]
-      contrast:       [0.8, 3.0]
-      flatness:       [0.01, 0.2]
-      entropy:        [6.0, 13.0]
-    climbing_up:
-      temporal_range: [0.4, 2.0]
-      f0_amplitude:   [0.1, 0.8]
-      contrast:       [0.3, 1.5]
-      flatness:       [0.02, 0.3]
-      entropy:        [5.0, 11.0]
-    climbing_down:
-      temporal_range: [0.4, 2.0]
-      f0_amplitude:   [0.1, 0.8]
-      contrast:       [0.3, 1.5]
-      flatness:       [0.02, 0.3]
-      entropy:        [5.0, 11.0]
+# ---- Domain Instruction -----------------------------------------
+# Expert-defined metric ranges per activity (used for domain mode)
+domain_instruction:
+  walking:
+    temporal_range: [0.5, 2.0]
+    f0_amplitude:   [0.1, 0.8]
+    contrast:       [0.3, 1.5]
+    flatness:       [0.01, 0.3]
+    entropy:        [5.0, 12.0]
+  running:
+    temporal_range: [1.0, 4.0]
+    f0_amplitude:   [0.2, 1.5]
+    contrast:       [0.5, 2.5]
+    flatness:       [0.01, 0.2]
+    entropy:        [6.0, 13.0]
+  jumping:
+    temporal_range: [1.5, 5.0]
+    f0_amplitude:   [0.3, 2.0]
+    contrast:       [0.8, 3.0]
+    flatness:       [0.01, 0.2]
+    entropy:        [6.0, 13.0]
+  climbing_up:
+    temporal_range: [0.4, 2.0]
+    f0_amplitude:   [0.1, 0.8]
+    contrast:       [0.3, 1.5]
+    flatness:       [0.02, 0.3]
+    entropy:        [5.0, 11.0]
+  climbing_down:
+    temporal_range: [0.4, 2.0]
+    f0_amplitude:   [0.1, 0.8]
+    contrast:       [0.3, 1.5]
+    flatness:       [0.02, 0.3]
+    entropy:        [5.0, 11.0]

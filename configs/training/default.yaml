@@ -2,39 +2,38 @@
 #  Training Configuration                                            #
 # ================================================================= #
 
-training:
-  max_epochs:    100
-  batch_size:    32
-  num_workers:   4
+max_epochs:    100
+batch_size:    32
+num_workers:   4
 
-  # ---- Optimizer --------------------------------------------------
-  optimizer:
-    name:          adam
-    lr:            1.0e-4
-    betas:         [0.9, 0.999]
-    weight_decay:  0.0
-    eps:           1.0e-8
+# ---- Optimizer --------------------------------------------------
+optimizer:
+  name:          adam
+  lr:            1.0e-4
+  betas:         [0.9, 0.999]
+  weight_decay:  0.0
+  eps:           1.0e-8
 
-  # ---- LR Scheduler -----------------------------------------------
-  scheduler:
-    name:    cosine          # cosine | step | none
-    T_max:   100             # matches max_epochs for cosine
-    eta_min: 1.0e-6
+# ---- LR Scheduler -----------------------------------------------
+scheduler:
+  name:    cosine          # cosine | step | none
+  T_max:   100             # matches max_epochs for cosine
+  eta_min: 1.0e-6
 
-  # ---- Loss / Adaptive Metric Weights -----------------------------
-  loss:
-    # Initial weight for each metric consistency loss term
-    metric_weight_init:  0.1
-    # Target ratio L_G : L_metric ≈ 10:1 (used for adaptive rescaling)
-    target_ratio:        10.0
-    # Start adaptive reweighting after this epoch
-    adaptive_start_epoch: 1
-    # Clamp range for dynamic metric weights
-    weight_min:          0.01
-    weight_max:          10.0
+# ---- Loss / Adaptive Metric Weights -----------------------------
+loss:
+  # Initial weight for each metric consistency loss term
+  metric_weight_init:  0.1
+  # Target ratio L_G : L_metric ~= 10:1 (used for adaptive rescaling)
+  target_ratio:        10.0
+  # Start adaptive reweighting after this epoch
+  adaptive_start_epoch: 1
+  # Clamp range for dynamic metric weights
+  weight_min:          0.01
+  weight_max:          10.0
 
-  # ---- Checkpointing & Logging ------------------------------------
-  checkpoint_dir:   "outputs/checkpoints"
-  log_every_n_steps: 10
-  save_every_n_epochs: 10
-  val_every_n_epochs:  5
+# ---- Checkpointing & Logging ------------------------------------
+checkpoint_dir:   "outputs/checkpoints"
+log_every_n_steps: 10
+save_every_n_epochs: 10
+val_every_n_epochs:  5

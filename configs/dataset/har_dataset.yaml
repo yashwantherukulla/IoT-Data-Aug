@@ -4,82 +4,81 @@
 
 seed: 42
 
-dataset:
-  name: realworld_har
+name: realworld_har
 
-  # ---- Paths -------------------------------------------------------
-  paths:
-    raw:       "data/raw/HAR"
-    processed: "data/processed/HAR"
+# ---- Paths -------------------------------------------------------
+paths:
+  raw:       "data/raw/HAR"
+  processed: "data/processed/HAR"
 
-  # ---- Modalities --------------------------------------------------
-  modalities:
-    - acc
-    - gyr
-  channels_per_modality: 3   # xyz axes → 3-channel spectrogram
+# ---- Modalities --------------------------------------------------
+modalities:
+  - acc
+  - gyr
+channels_per_modality: 3   # xyz axes -> 3-channel spectrogram
 
-  # ---- Activities --------------------------------------------------
-  activities:
-    - climbingdown
-    - climbingup
-    - jumping
-    - running
-    - walking
+# ---- Activities --------------------------------------------------
+activities:
+  - climbingdown
+  - climbingup
+  - jumping
+  - running
+  - walking
 
-  # Maps raw activity names to canonical folder/label names
-  activity_map:
-    climbingdown: climbing_down
-    climbingup:   climbing_up
-    jumping:      jumping
-    running:      running
-    walking:      walking
+# Maps raw activity names to canonical folder/label names
+activity_map:
+  climbingdown: climbing_down
+  climbingup:   climbing_up
+  jumping:      jumping
+  running:      running
+  walking:      walking
 
-  # ---- Windowing ---------------------------------------------------
-  window_seconds:  2.5
-  sample_rate_hz:  100.0
+# ---- Windowing ---------------------------------------------------
+window_seconds:  2.5
+sample_rate_hz:  100.0
 
-  # ---- STFT / Spectrogram -----------------------------------------
-  spectrogram:
-    fft_window_ms: 1500.0   # → win_length = round(sr * fft_ms / 1000)
-    hop_ms:        20.0     # → hop_length = max(1, round(sr * hop_ms / 1000))
-    window:        hann     # hann | hamming
-    power:         1.0      # 1.0 = magnitude, 2.0 = power
-    log1p:         true
+# ---- STFT / Spectrogram -----------------------------------------
+spectrogram:
+  fft_window_ms: 1500.0   # -> win_length = round(sr * fft_ms / 1000)
+  hop_ms:        20.0     # -> hop_length = max(1, round(sr * hop_ms / 1000))
+  window:        hann     # hann | hamming
+  power:         1.0      # 1.0 = magnitude, 2.0 = power
+  log1p:         true
 
-  # ---- Differentiable Metrics -------------------------------------
-  metrics:
-    names:
-      - temporal_range
-      - f0_amplitude
-      - contrast
-      - flatness
-      - entropy
-    # HPS harmonic ratios: [1.0, 0.5, 0.25] → downsamples to 1/2 and 1/4
-    hps_harmonics:        [1.0, 0.5, 0.25]
-    # Soft-argmax temperature for F0 peak detection
-    hps_softmax_temp:     0.1
-    # Top/bottom fraction for contrast metric
-    contrast_tail_ratio:  0.05
-    # Epsilon for numerical stability (log-safe)
-    eps:                  1.0e-10
+# ---- Differentiable Metrics -------------------------------------
+metrics:
+  names:
+    - temporal_range
+    - f0_amplitude
+    - contrast
+    - flatness
+    - entropy
+  # HPS harmonic ratios: [1.0, 0.5, 0.25] -> downsamples to 1/2 and 1/4
+  hps_harmonics:        [1.0, 0.5, 0.25]
+  # Soft-argmax temperature for F0 peak detection
+  hps_softmax_temp:     0.1
+  # Top/bottom fraction for contrast metric
+  contrast_tail_ratio:  0.05
+  # Epsilon for numerical stability (log-safe)
+  eps:                  1.0e-10
 
-  # ---- Train / Val Split ------------------------------------------
-  split:
-    num_train_subjects: 10
-    num_val_subjects:   5
+# ---- Train / Val Split ------------------------------------------
+split:
+  num_train_subjects: 10
+  num_val_subjects:   5
 
-  # ---- Pipeline Control -------------------------------------------
-  pipeline:
-    # Set true on first run with a fresh download to clean raw data
-    run_clean:        false
-    # Sentinel file written after cleaning; re-set to force redo
-    clean_sentinel:   "data/raw/HAR/.cleaned"
-    # Always regenerate processed data (deletes stale artifacts)
-    force_regenerate: true
+# ---- Pipeline Control -------------------------------------------
+pipeline:
+  # Set true on first run with a fresh download to clean raw data
+  run_clean:        false
+  # Sentinel file written after cleaning; re-set to force redo
+  clean_sentinel:   "data/raw/HAR/.cleaned"
+  # Always regenerate processed data (deletes stale artifacts)
+  force_regenerate: true
 
-  # ---- DataLoader (used by trainer, not preprocessing) ------------
-  loader:
-    batch_size:  32
-    num_workers: 4
-    pin_memory:  true
-    drop_last:   false
+# ---- DataLoader (used by trainer, not preprocessing) ------------
+loader:
+  batch_size:  32
+  num_workers: 4
+  pin_memory:  true
+  drop_last:   false

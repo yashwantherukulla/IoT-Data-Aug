@@ -1,16 +1,14 @@
 # ================================================================= #
-#  Logging Configuration — Console (default)                         #
+#  Logging Configuration - Console (default)                         #
 # ================================================================= #
 
-logging:
-  backend: console
-  log_every_n_steps: 10
-  save_dir: "outputs/logs"
+backend: console
+log_every_n_steps: 10
+save_dir: "outputs/logs"
 
 # ---- W&B stub (copy to wandb.yaml and fill in) ------------------
-# logging:
-#   backend: wandb
-#   project: cgdap_har
-#   entity:  your_wandb_entity
-#   log_every_n_steps: 10
-#   save_dir: "outputs/logs"
+# backend: wandb
+# project: cgdap_har
+# entity: your_wandb_entity
+# log_every_n_steps: 10
+# save_dir: "outputs/logs"

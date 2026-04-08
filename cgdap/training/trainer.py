@@ -260,15 +260,6 @@ class CGDAPTrainer:
                 step=self.global_step,
             )
 
-            if steps % self.log_every == 0:
-                log.info(
-                    "Epoch %d step %d | L_total=%.4f L_G=%.4f L_metric=%.4f",
-                    epoch, steps,
-                    loss_dict["L_total"].item(),
-                    loss_dict["L_G"].item(),
-                    loss_dict["L_metric"].item(),
-                )
-
         if self.scheduler is not None:
             self.scheduler.step()
 

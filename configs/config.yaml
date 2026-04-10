@@ -29,6 +29,7 @@ defaults:
   - model: cgdap
   - training: default
   - augmentation: default
+  - evaluation: default
   - logging: console
   - _self_
 

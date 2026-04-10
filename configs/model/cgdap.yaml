@@ -24,17 +24,17 @@ num_classes:    5          # number of HAR activity classes
 # --- Condition embedder ------------------------------------------
 condition:
   n_metrics:     5
-  d_model:       256
+  d_model:       128
   n_heads:       4
   n_cond_tokens: 8         # metric + class tokens projected to this sequence length
   dropout:       0.1
 
 # --- U-Net (active denoiser) ------------------------------------
 unet:
-  base_channels:     128   # set to 32 for smoke tests
+  base_channels:     96   # set to 32 for smoke tests
   channel_multipliers: [1, 2, 4]   # per resolution
-  n_res_blocks:      2
-  temb_dim:          512
+  n_res_blocks:      1
+  temb_dim:          256
   # depths at which cross-attention is applied (0=bottleneck, 1=deepest skip)
   cross_attn_depths: [0, 1]
   dropout:           0.1

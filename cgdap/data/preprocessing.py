@@ -346,7 +346,7 @@ def run_preprocessing(cfg: DictConfig) -> None:
     processed_root = pathlib.Path(cfg.dataset.paths.processed)
     modalities: list[str] = list(cfg.dataset.modalities)
 
-    # Optionally run raw data cleaning
+    # Raw zip archives are consumed in place; keep the old flag as a no-op.
     if cfg.dataset.pipeline.run_clean:
         from cgdap.data.raw_loader import run_cleaning_pipeline
         sentinel = pathlib.Path(cfg.dataset.pipeline.clean_sentinel)

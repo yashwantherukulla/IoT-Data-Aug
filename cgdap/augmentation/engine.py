@@ -118,16 +118,26 @@ def augment_domain_instruction(
         raise ValueError(f"Activity {activity!r} not in domain_instruction config. Available: {available}")
 
     act_ranges = domain_cfg[activity]
-    metric_sample_targets = []
-    for name in METRIC_NAMES:
-        lo, hi = act_ranges[name][0], act_ranges[name][1]
-        val = random.uniform(float(lo), float(hi))
-        metric_sample_targets.append(val)
 
-    metrics_tensor = torch.tensor(metric_sample_targets, dtype=torch.float32)
+    def _sample_metric_targets(metric_ranges: DictConfig | dict[str, Any]) -> torch.Tensor:
+        values = []
+        for name in METRIC_NAMES:
+            lo, hi = metric_ranges[name][0], metric_ranges[name][1]
+            values.append(random.uniform(float(lo), float(hi)))
+        return torch.tensor(values, dtype=torch.float32)
 
-    # Same targets for all modalities (domain ranges are activity-level)
-    metrics_aug = {mod: metrics_tensor.clone() for mod in modalities}
+    # Preferred schema: domain_instruction.<activity>.<modality>.<metric_name>.
+    # Fall back to legacy shared activity-level ranges if needed.
+    if all(mod in act_ranges for mod in modalities):
+        metrics_aug = {
+            mod: _sample_metric_targets(act_ranges[mod])
+            for mod in modalities
+        }
+    else:
+        metrics_aug = {
+            mod: _sample_metric_targets(act_ranges)
+            for mod in modalities
+        }
     return {**metrics_aug, "label": label_map[activity]}
 
 

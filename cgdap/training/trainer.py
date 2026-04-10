@@ -267,6 +267,31 @@ class CGDAPTrainer:
             raise RuntimeError("Training loader produced zero batches.")
         return {k: v / steps for k, v in totals.items()}
 
+    def _build_validation_controls(
+        self,
+        batch: dict[str, Any],
+        batch_idx: int,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        batch_size = int(batch["label"].shape[0])
+        generator = torch.Generator(device=self.device).manual_seed(int(self.cfg.seed) + batch_idx)
+        timesteps = torch.randint(
+            0,
+            self.model.schedule.train_timesteps,
+            (batch_size,),
+            generator=generator,
+            device=self.device,
+        )
+        noises = {
+            mod: torch.randn(
+                batch[mod]["spectrogram"].shape,
+                generator=generator,
+                device=self.device,
+                dtype=batch[mod]["spectrogram"].dtype,
+            )
+            for mod in self.cfg.dataset.modalities
+        }
+        return timesteps, noises
+
     @torch.no_grad()
     def val_epoch(self, epoch: int) -> dict[str, float]:
         self.model.eval()
@@ -280,13 +305,19 @@ class CGDAPTrainer:
             leave=False,
             dynamic_ncols=True,
         )
-        for batch in progress:
+        for batch_idx, batch in enumerate(progress):
             for mod in self.cfg.dataset.modalities:
                 batch[mod]["spectrogram"] = batch[mod]["spectrogram"].to(self.device)
                 batch[mod]["metrics"] = batch[mod]["metrics"].to(self.device)
             batch["label"] = batch["label"].to(self.device)
 
-            loss_dict = self.model(batch, n_classes=self.n_classes)
+            timesteps, noises = self._build_validation_controls(batch, batch_idx)
+            loss_dict = self.model(
+                batch,
+                n_classes=self.n_classes,
+                timesteps=timesteps,
+                noises=noises,
+            )
             for k, v in loss_dict.items():
                 totals[k] = totals.get(k, 0.0) + v.item()
             steps += 1

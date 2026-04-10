@@ -59,6 +59,7 @@ class BaseNoiseSchedule(nn.Module, ABC):
         condition: torch.Tensor,
         device: torch.device,
         seed: int | None = None,
+        generator: torch.Generator | None = None,
         num_steps: int | None = None,
     ) -> torch.Tensor:
         """Full reverse / sampling loop. Returns x0 estimate."""

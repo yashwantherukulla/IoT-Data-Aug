@@ -16,3 +16,4 @@ generate_code
 !src/data/**
 outputs
 .env
+codebase_audit_report.md

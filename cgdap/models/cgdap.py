@@ -20,7 +20,7 @@ Training forward pass:
 
 Sampling:
     Given metric targets + label per modality, run reverse loop.
-    Synchronized noise (same RNG seed) across modalities.
+    Reproducible but decorrelated noise streams across modalities.
 """
 
 from __future__ import annotations
@@ -84,6 +84,7 @@ class MultimodalCGDAP(nn.Module):
         metric_weight_init: float = 0.1,
         target_ratio: float = 10.0,
         adaptive_start_epoch: int = 1,
+        metric_weight_ema_decay: float = 0.9,
         weight_min: float = 0.01,
         weight_max: float = 10.0,
         n_metrics: int = 5,
@@ -93,6 +94,7 @@ class MultimodalCGDAP(nn.Module):
         self.n_metrics = n_metrics
         self.target_ratio = target_ratio
         self.adaptive_start_epoch = adaptive_start_epoch
+        self.metric_weight_ema_decay = metric_weight_ema_decay
         self.weight_min = weight_min
         self.weight_max = weight_max
         self.current_epoch: int = 0
@@ -117,6 +119,10 @@ class MultimodalCGDAP(nn.Module):
         self.register_buffer(
             "metric_weights",
             torch.full((n_metrics,), metric_weight_init),
+        )
+        self.register_buffer(
+            "metric_loss_ema",
+            torch.full((n_metrics,), float("nan")),
         )
 
     # ------------------------------------------------------------------
@@ -182,6 +188,7 @@ class MultimodalCGDAP(nn.Module):
             metric_weight_init=float(loss_cfg.metric_weight_init),
             target_ratio=float(loss_cfg.target_ratio),
             adaptive_start_epoch=int(loss_cfg.adaptive_start_epoch),
+            metric_weight_ema_decay=float(loss_cfg.metric_weight_ema_decay),
             weight_min=float(loss_cfg.weight_min),
             weight_max=float(loss_cfg.weight_max),
             n_metrics=n_metrics,
@@ -196,14 +203,25 @@ class MultimodalCGDAP(nn.Module):
 
     def _update_metric_weights(self, l_g: torch.Tensor, per_metric_losses: torch.Tensor) -> None:
         """Adaptively rescale metric weights after adaptive_start_epoch."""
+        if not self.training:
+            return
         if self.current_epoch < self.adaptive_start_epoch:
             return
-        l_g_val = l_g.detach()
-        for i in range(self.n_metrics):
-            l_m = per_metric_losses[i].detach()
-            if l_m > 1e-12:
-                w = (l_g_val / (l_m * self.target_ratio)).clamp(self.weight_min, self.weight_max)
-                self.metric_weights[i] = w
+        detached_losses = per_metric_losses.detach()
+        if torch.isnan(self.metric_loss_ema).any():
+            self.metric_loss_ema.copy_(detached_losses)
+        else:
+            self.metric_loss_ema.mul_(self.metric_weight_ema_decay).add_(
+                detached_losses,
+                alpha=1.0 - self.metric_weight_ema_decay,
+            )
+
+        stable_losses = self.metric_loss_ema.clamp(min=1e-12)
+        weights = (l_g.detach() / (stable_losses * self.target_ratio)).clamp(
+            self.weight_min,
+            self.weight_max,
+        )
+        self.metric_weights.copy_(weights)
 
     # ------------------------------------------------------------------
     # Training forward pass
@@ -213,6 +231,8 @@ class MultimodalCGDAP(nn.Module):
         self,
         batch: dict[str, Any],
         n_classes: int,
+        timesteps: torch.Tensor | None = None,
+        noises: dict[str, torch.Tensor] | None = None,
     ) -> dict[str, torch.Tensor]:
         """Compute total loss over all modalities.
 
@@ -230,8 +250,9 @@ class MultimodalCGDAP(nn.Module):
         labels_oh = self._labels_to_onehot(labels, n_classes_actual)
 
         B = labels.shape[0]
-        # Sample shared timestep across modalities
-        t = self.schedule.sample_timesteps(B, device)
+        # Sample shared timestep across modalities unless validation overrides it.
+        t = timesteps if timesteps is not None else self.schedule.sample_timesteps(B, device)
+        t = t.to(device)
 
         accum_l_g = torch.zeros(1, device=device)
         accum_metric_losses = torch.zeros(self.n_metrics, device=device)
@@ -245,7 +266,10 @@ class MultimodalCGDAP(nn.Module):
             condition = self.embedder(metrics_target, labels_oh)   # [B, n_tokens, d_model]
 
             # Forward diffusion
-            x_t, noise = self.schedule.q_sample(x0, t)
+            noise_override = None if noises is None else noises.get(mod)
+            if noise_override is not None:
+                noise_override = noise_override.to(device)
+            x_t, noise = self.schedule.q_sample(x0, t, noise=noise_override)
 
             # Predict noise
             pred_noise = self.denoisers[mod](x_t, t, condition)
@@ -255,11 +279,8 @@ class MultimodalCGDAP(nn.Module):
             accum_l_g = accum_l_g + l_g
 
             # Metric consistency loss via x0_hat
-            with torch.no_grad():
-                x0_hat = self.schedule.predict_x0(x_t, t, pred_noise.detach())
-            # Need grad through metric extractor on x0_hat, so re-predict without detach
-            x0_hat_grad = self.schedule.predict_x0(x_t, t, pred_noise)
-            extracted = self.metric_extractor(x0_hat_grad)    # [B, 5]
+            x0_hat = self.schedule.predict_x0(x_t, t, pred_noise)
+            extracted = self.metric_extractor(x0_hat)    # [B, 5]
 
             for i in range(self.n_metrics):
                 l_m_i = F.mse_loss(extracted[:, i], metrics_target[:, i])
@@ -304,7 +325,9 @@ class MultimodalCGDAP(nn.Module):
     ) -> dict[str, torch.Tensor]:
         """Generate spectrograms for all modalities.
 
-        Same seed is used across modalities for synchronized generation.
+        A base seed can be provided for reproducibility; each modality receives
+        a derived offset seed so the reverse-process noise streams stay
+        decorrelated.
 
         Returns:
             {modality: [B, C, F, T]}
@@ -313,15 +336,16 @@ class MultimodalCGDAP(nn.Module):
         labels_oh = self._labels_to_onehot(labels.to(device), n_classes)
 
         generated: dict[str, torch.Tensor] = {}
-        for mod in self.modalities:
+        for mod_idx, mod in enumerate(self.modalities):
             mets = metric_targets[mod].to(device).float()
             condition = self.embedder(mets, labels_oh)
+            mod_seed = None if seed is None else seed + mod_idx
             x_gen = self.schedule.sample_loop(
                 denoiser=self.denoisers[mod],
                 shape=(B, *spec_shape),
                 condition=condition,
                 device=device,
-                seed=seed,
+                seed=mod_seed,
                 num_steps=num_steps,
             )
             generated[mod] = x_gen

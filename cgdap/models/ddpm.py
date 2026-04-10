@@ -118,6 +118,7 @@ class DDPMSchedule(BaseNoiseSchedule):
         x_t: torch.Tensor,
         t: torch.Tensor,
         condition: torch.Tensor,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor:
         betas = self._extract(self.betas, t, x_t.shape)
         sqrt_one_minus = self._extract(self.sqrt_one_minus_alphas_cumprod, t, x_t.shape)
@@ -128,7 +129,12 @@ class DDPMSchedule(BaseNoiseSchedule):
 
         # Only add noise for t > 0
         posterior_var = self._extract(self.posterior_variance, t, x_t.shape)
-        noise = torch.randn_like(x_t)
+        noise = torch.randn(
+            x_t.shape,
+            generator=generator,
+            device=x_t.device,
+            dtype=x_t.dtype,
+        )
         not_last = (t > 0).float().view(-1, *([1] * (x_t.dim() - 1)))
         return model_mean + not_last * torch.sqrt(posterior_var) * noise
 
@@ -144,22 +150,23 @@ class DDPMSchedule(BaseNoiseSchedule):
         condition: torch.Tensor,
         device: torch.device,
         seed: int | None = None,
+        generator: torch.Generator | None = None,
         num_steps: int | None = None,
     ) -> torch.Tensor:
-        if seed is not None:
-            torch.manual_seed(seed)
+        if generator is None and seed is not None:
+            generator = torch.Generator(device=device).manual_seed(seed)
 
         n_steps = num_steps or self.num_infer_steps
         # Create evenly-spaced timestep schedule over [0, T-1]
         step_size = self.train_timesteps // n_steps
         timesteps = list(range(self.train_timesteps - 1, -1, -step_size))
 
-        x = torch.randn(shape, device=device)
+        x = torch.randn(shape, generator=generator, device=device)
         B = shape[0]
 
         for t_int in timesteps:
             t = torch.full((B,), t_int, dtype=torch.long, device=device)
-            x = self.p_sample(denoiser, x, t, condition)
+            x = self.p_sample(denoiser, x, t, condition, generator=generator)
 
         return x
 

@@ -1,0 +1,38 @@
+# ================================================================= #
+#  Downstream Evaluation Configuration                               #
+# ================================================================= #
+
+classifiers:
+  - deepsense
+  - transformer
+
+batch_size: null
+n_epochs: 20
+patience: 5
+min_delta: 0.0
+
+optimizer:
+  name: adam
+  lr: 1.0e-4
+  weight_decay: 0.0
+
+augmentation:
+  enabled: true
+  samples_per_real: 1
+  checkpoint_path: null
+  num_steps: null
+  seed: ${seed}
+
+deepsense:
+  conv_channels: 64
+  n_conv_layers: 3
+  rnn_hidden: 128
+  n_rnn_layers: 2
+  dropout: 0.2
+
+transformer:
+  d_model: 256
+  n_heads: 4
+  n_layers: 4
+  ffn_dim: 1024
+  dropout: 0.1

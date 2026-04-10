@@ -26,32 +26,67 @@ disturbance:
 # Expert-defined metric ranges per activity (used for domain mode)
 domain_instruction:
   walking:
-    temporal_range: [0.5, 2.0]
-    f0_amplitude:   [0.1, 0.8]
-    contrast:       [0.3, 1.5]
-    flatness:       [0.01, 0.3]
-    entropy:        [5.0, 12.0]
+    acc:
+      temporal_range: [0.5, 2.0]
+      f0_amplitude:   [0.15, 0.90]
+      contrast:       [0.4, 1.7]
+      flatness:       [0.01, 0.22]
+      entropy:        [5.0, 11.0]
+    gyr:
+      temporal_range: [0.3, 1.4]
+      f0_amplitude:   [0.05, 0.45]
+      contrast:       [0.2, 1.1]
+      flatness:       [0.03, 0.38]
+      entropy:        [6.0, 12.5]
   running:
-    temporal_range: [1.0, 4.0]
-    f0_amplitude:   [0.2, 1.5]
-    contrast:       [0.5, 2.5]
-    flatness:       [0.01, 0.2]
-    entropy:        [6.0, 13.0]
+    acc:
+      temporal_range: [1.0, 4.0]
+      f0_amplitude:   [0.30, 1.70]
+      contrast:       [0.6, 2.8]
+      flatness:       [0.01, 0.16]
+      entropy:        [6.0, 12.0]
+    gyr:
+      temporal_range: [0.6, 2.5]
+      f0_amplitude:   [0.10, 0.85]
+      contrast:       [0.4, 1.8]
+      flatness:       [0.02, 0.28]
+      entropy:        [7.0, 13.0]
   jumping:
-    temporal_range: [1.5, 5.0]
-    f0_amplitude:   [0.3, 2.0]
-    contrast:       [0.8, 3.0]
-    flatness:       [0.01, 0.2]
-    entropy:        [6.0, 13.0]
+    acc:
+      temporal_range: [1.5, 5.0]
+      f0_amplitude:   [0.40, 2.20]
+      contrast:       [0.9, 3.2]
+      flatness:       [0.01, 0.14]
+      entropy:        [6.0, 12.5]
+    gyr:
+      temporal_range: [0.8, 3.2]
+      f0_amplitude:   [0.12, 1.00]
+      contrast:       [0.5, 2.0]
+      flatness:       [0.02, 0.30]
+      entropy:        [7.0, 13.2]
   climbing_up:
-    temporal_range: [0.4, 2.0]
-    f0_amplitude:   [0.1, 0.8]
-    contrast:       [0.3, 1.5]
-    flatness:       [0.02, 0.3]
-    entropy:        [5.0, 11.0]
+    acc:
+      temporal_range: [0.4, 2.0]
+      f0_amplitude:   [0.12, 0.75]
+      contrast:       [0.3, 1.5]
+      flatness:       [0.02, 0.24]
+      entropy:        [5.0, 10.5]
+    gyr:
+      temporal_range: [0.3, 1.6]
+      f0_amplitude:   [0.06, 0.40]
+      contrast:       [0.2, 1.0]
+      flatness:       [0.04, 0.34]
+      entropy:        [5.5, 11.5]
   climbing_down:
-    temporal_range: [0.4, 2.0]
-    f0_amplitude:   [0.1, 0.8]
-    contrast:       [0.3, 1.5]
-    flatness:       [0.02, 0.3]
-    entropy:        [5.0, 11.0]
+    acc:
+      temporal_range: [0.4, 2.0]
+      f0_amplitude:   [0.12, 0.75]
+      contrast:       [0.3, 1.5]
+      flatness:       [0.02, 0.24]
+      entropy:        [5.0, 10.5]
+    gyr:
+      temporal_range: [0.3, 1.6]
+      f0_amplitude:   [0.06, 0.40]
+      contrast:       [0.2, 1.0]
+      flatness:       [0.04, 0.34]
+      entropy:        [5.5, 11.5]

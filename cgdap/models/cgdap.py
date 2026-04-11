@@ -322,7 +322,8 @@ class MultimodalCGDAP(nn.Module):
         device: torch.device,
         seed: int | None = None,
         num_steps: int | None = None,
-    ) -> dict[str, torch.Tensor]:
+        return_trajectory: bool = False,
+    ) -> dict[str, torch.Tensor] | tuple[dict[str, torch.Tensor], dict[str, list[torch.Tensor]]]:
         """Generate spectrograms for all modalities.
 
         A base seed can be provided for reproducibility; each modality receives
@@ -336,18 +337,27 @@ class MultimodalCGDAP(nn.Module):
         labels_oh = self._labels_to_onehot(labels.to(device), n_classes)
 
         generated: dict[str, torch.Tensor] = {}
+        trajectories: dict[str, list[torch.Tensor]] = {}
         for mod_idx, mod in enumerate(self.modalities):
             mets = metric_targets[mod].to(device).float()
             condition = self.embedder(mets, labels_oh)
             mod_seed = None if seed is None else seed + mod_idx
-            x_gen = self.schedule.sample_loop(
+            sample_result = self.schedule.sample_loop(
                 denoiser=self.denoisers[mod],
                 shape=(B, *spec_shape),
                 condition=condition,
                 device=device,
                 seed=mod_seed,
                 num_steps=num_steps,
+                return_trajectory=return_trajectory,
             )
+            if return_trajectory:
+                x_gen, traj = sample_result
+                trajectories[mod] = traj
+            else:
+                x_gen = sample_result
             generated[mod] = x_gen
 
+        if return_trajectory:
+            return generated, trajectories
         return generated

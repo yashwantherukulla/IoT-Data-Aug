@@ -152,22 +152,45 @@ class DDPMSchedule(BaseNoiseSchedule):
         seed: int | None = None,
         generator: torch.Generator | None = None,
         num_steps: int | None = None,
-    ) -> torch.Tensor:
+        return_trajectory: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
         if generator is None and seed is not None:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        n_steps = num_steps or self.num_infer_steps
-        # Create evenly-spaced timestep schedule over [0, T-1]
-        step_size = self.train_timesteps // n_steps
-        timesteps = list(range(self.train_timesteps - 1, -1, -step_size))
+        n_steps = int(num_steps or self.num_infer_steps)
+        if n_steps <= 0:
+            raise ValueError("num_steps must be a positive integer.")
+        n_steps = min(n_steps, self.train_timesteps)
+
+        # Build a descending schedule that always reaches t=0.
+        raw_timesteps = torch.linspace(
+            self.train_timesteps - 1,
+            0,
+            steps=n_steps,
+            device=device,
+        )
+        timesteps: list[int] = []
+        for t_val in raw_timesteps.tolist():
+            t_int = int(round(t_val))
+            if not timesteps or timesteps[-1] != t_int:
+                timesteps.append(t_int)
+        if timesteps[-1] != 0:
+            timesteps.append(0)
 
         x = torch.randn(shape, generator=generator, device=device)
+        trajectory: list[torch.Tensor] | None = None
+        if return_trajectory:
+            trajectory = [x.detach().cpu()]
         B = shape[0]
 
         for t_int in timesteps:
             t = torch.full((B,), t_int, dtype=torch.long, device=device)
             x = self.p_sample(denoiser, x, t, condition, generator=generator)
+            if trajectory is not None:
+                trajectory.append(x.detach().cpu())
 
+        if trajectory is not None:
+            return x, trajectory
         return x
 
     # ------------------------------------------------------------------

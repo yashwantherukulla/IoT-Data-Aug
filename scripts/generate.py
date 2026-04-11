@@ -147,7 +147,8 @@ def main(cfg: DictConfig) -> None:
             for modality in modalities
         }
         labels = torch.tensor([label], device=device)
-        generated = model.sample(
+        capture_trajectory = bool(cfg.generation.save_plots) and bool(cfg.generation.get("save_trajectory_plots", True))
+        sample_result = model.sample(
             metric_targets=metric_targets,
             labels=labels,
             n_classes=len(label_map),
@@ -155,7 +156,13 @@ def main(cfg: DictConfig) -> None:
             device=device,
             seed=int(cfg.generation.seed) + sample_idx,
             num_steps=cfg.generation.num_steps,
+            return_trajectory=capture_trajectory,
         )
+        if capture_trajectory:
+            generated, generated_trajectories = sample_result
+        else:
+            generated = sample_result
+            generated_trajectories = None
 
         prefix = str(cfg.generation.get("sample_prefix") or "synthetic")
         if reference_sample is not None:
@@ -172,9 +179,11 @@ def main(cfg: DictConfig) -> None:
             augmentation_mode=str(cfg.augmentation.mode),
             sample_index=sample_idx,
             reference_sample=reference_sample,
+            generated_trajectories=generated_trajectories,
             save_bundle=bool(cfg.generation.save_bundle),
             save_modalities=bool(cfg.generation.save_modalities),
             save_plots=bool(cfg.generation.save_plots),
+            trajectory_frames=int(cfg.generation.get("trajectory_frames", 5)),
         )
         log.info("Saved %s -> %s", sample_name, {k: str(v) for k, v in saved_paths.items()})
 

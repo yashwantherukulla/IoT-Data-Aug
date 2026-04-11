@@ -67,6 +67,10 @@ def test_save_generated_outputs_writes_expected_files():
         "acc": torch.rand(1, 3, 8, 12),
         "gyr": torch.rand(1, 3, 8, 12),
     }
+    generated_trajectories = {
+        "acc": [torch.rand(1, 3, 8, 12), torch.rand(1, 3, 8, 12), torch.rand(1, 3, 8, 12)],
+        "gyr": [torch.rand(1, 3, 8, 12), torch.rand(1, 3, 8, 12), torch.rand(1, 3, 8, 12)],
+    }
     metric_targets = {
         "acc": torch.rand(5),
         "gyr": torch.rand(5),
@@ -84,13 +88,17 @@ def test_save_generated_outputs_writes_expected_files():
             augmentation_mode="disturbance",
             sample_index=0,
             reference_sample=reference_sample,
+            generated_trajectories=generated_trajectories,
+            trajectory_frames=3,
         )
 
         assert saved["acc_sample"].exists()
         assert saved["gyr_sample"].exists()
         assert saved["paired_bundle"].exists()
         assert saved["acc_plot"].exists()
+        assert saved["acc_trajectory_plot"].exists()
         assert saved["gyr_plot"].exists()
+        assert saved["gyr_trajectory_plot"].exists()
         assert saved["paired_plot"].exists()
 
         acc_payload = torch.load(saved["acc_sample"], map_location="cpu", weights_only=True)

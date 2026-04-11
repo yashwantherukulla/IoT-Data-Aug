@@ -56,3 +56,5 @@ generation:
   save_bundle: true
   save_modalities: true
   save_plots: true
+  save_trajectory_plots: true
+  trajectory_frames: 5

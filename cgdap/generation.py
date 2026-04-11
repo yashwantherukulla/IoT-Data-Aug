@@ -149,10 +149,12 @@ def save_generated_outputs(
     augmentation_mode: str,
     sample_index: int,
     reference_sample: dict[str, Any] | None = None,
+    generated_trajectories: dict[str, list[torch.Tensor]] | None = None,
     *,
     save_bundle: bool = True,
     save_modalities: bool = True,
     save_plots: bool = True,
+    trajectory_frames: int = 5,
 ) -> dict[str, pathlib.Path]:
     """Persist generated samples to disk for demo or downstream inspection."""
     output_dir = pathlib.Path(output_root)
@@ -204,6 +206,19 @@ def save_generated_outputs(
                     time_axis=payload.get("time_axis_s"),
                 )
                 saved_paths[f"{modality}_plot"] = plot_path
+                if generated_trajectories is not None and modality in generated_trajectories:
+                    trajectory_plot_path = modality_dir / f"{sample_name}__trajectory.png"
+                    _save_trajectory_plot(
+                        plot_path=trajectory_plot_path,
+                        trajectory=generated_trajectories[modality],
+                        activity=activity,
+                        modality=modality,
+                        label=label,
+                        n_frames=trajectory_frames,
+                        freq_axis=payload.get("freq_axis_hz"),
+                        time_axis=payload.get("time_axis_s"),
+                    )
+                    saved_paths[f"{modality}_trajectory_plot"] = trajectory_plot_path
 
     if save_bundle:
         paired_dir = output_dir / "paired" / activity
@@ -392,6 +407,61 @@ def _save_paired_plot(
         )
 
     fig.suptitle(f"Generated Pair | {activity} | label={label}")
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _select_trajectory_frames(
+    trajectory: list[torch.Tensor],
+    n_frames: int,
+) -> list[tuple[int, torch.Tensor]]:
+    if not trajectory:
+        return []
+    n = len(trajectory)
+    k = max(2, min(int(n_frames), n))
+    positions = np.linspace(0, n - 1, num=k)
+
+    indices: list[int] = []
+    for pos in positions.tolist():
+        idx = int(round(pos))
+        if not indices or indices[-1] != idx:
+            indices.append(idx)
+
+    if indices[0] != 0:
+        indices.insert(0, 0)
+    if indices[-1] != n - 1:
+        indices.append(n - 1)
+
+    return [(idx, trajectory[idx]) for idx in indices]
+
+
+def _save_trajectory_plot(
+    plot_path: pathlib.Path,
+    trajectory: list[torch.Tensor],
+    activity: str,
+    modality: str,
+    label: int,
+    *,
+    n_frames: int,
+    freq_axis: torch.Tensor | None = None,
+    time_axis: torch.Tensor | None = None,
+) -> None:
+    selected = _select_trajectory_frames(trajectory, n_frames)
+    if not selected:
+        return
+
+    fig, axes = plt.subplots(1, len(selected), figsize=(4 * len(selected), 4), squeeze=False)
+    for col, (idx, frame) in enumerate(selected):
+        _plot_on_axis(
+            axes[0, col],
+            frame,
+            title=f"Step {idx}",
+            freq_axis=freq_axis,
+            time_axis=time_axis,
+        )
+
+    fig.suptitle(f"Denoising trajectory | {activity} | label={label} | {modality}")
     fig.tight_layout()
     fig.savefig(plot_path, dpi=160, bbox_inches="tight")
     plt.close(fig)

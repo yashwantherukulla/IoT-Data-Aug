@@ -61,8 +61,13 @@ class BaseNoiseSchedule(nn.Module, ABC):
         seed: int | None = None,
         generator: torch.Generator | None = None,
         num_steps: int | None = None,
-    ) -> torch.Tensor:
-        """Full reverse / sampling loop. Returns x0 estimate."""
+        return_trajectory: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+        """Full reverse / sampling loop.
+
+        Returns x0 estimate, or ``(x0, trajectory)`` when ``return_trajectory``
+        is true. Trajectory entries are reverse-process snapshots.
+        """
 
     @abstractmethod
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:

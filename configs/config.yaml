@@ -38,3 +38,20 @@ defaults:
 # ----------------------------------------------------------------- #
 seed: 42
 experiment_name: "test_run"
+
+# ----------------------------------------------------------------- #
+#  Standalone Generation                                             #
+# ----------------------------------------------------------------- #
+generation:
+  reference_pt: null
+  checkpoint_path: null
+  output_dir: "outputs/generated/${experiment_name}"
+  dataset_split: null
+  activity: null
+  num_samples: 4
+  num_steps: null
+  seed: ${seed}
+  sample_prefix: "demo"
+  match_reference_label: true
+  save_bundle: true
+  save_modalities: true

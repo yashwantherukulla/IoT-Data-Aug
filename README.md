@@ -53,6 +53,7 @@ Current workspace verification:
 |-- scripts/
 |   |-- prepare_dataset.py
 |   |-- train.py
+|   |-- generate.py
 |   `-- evaluate.py
 |-- tests/
 |-- data/
@@ -303,7 +304,25 @@ or explicit checkpoint:
 uv run python scripts/evaluate.py evaluation.augmentation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0000.pt"
 ```
 
-### 4. Run Tests
+### 4. Generate Standalone Synthetic Samples
+
+Demo generation from one processed sample:
+
+```bash
+uv run python scripts/generate.py generation.reference_pt="data/processed/HAR/train/acc/walking/<sample>.pt" generation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0000.pt"
+```
+
+Generate multiple variants from the same reference:
+
+```bash
+uv run python scripts/generate.py generation.reference_pt="data/processed/HAR/train/acc/walking/<sample>.pt" generation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0000.pt" generation.num_samples=8
+```
+
+Outputs:
+- modality-wise `.pt` files under `outputs/generated/<experiment_name>/{acc,gyr}/<activity>/`
+- paired demo bundles under `outputs/generated/<experiment_name>/paired/<activity>/`
+
+### 5. Run Tests
 
 ```bash
 uv run pytest tests -v
@@ -337,11 +356,9 @@ Implemented:
 - full raw-to-processed dataset conversion
 - paired multimodal training loop
 - adaptive metric-weighted CGDAP objective
+- standalone synthetic sample generation CLI
 - synthetic generation pathway inside evaluation script
 - classifier comparison on real-only vs real+augmented loaders
-
-Not implemented as standalone CLI:
-- dedicated `scripts/generate.py` to export synthetic `.pt` datasets to disk outside evaluation flow
 
 ## Troubleshooting
 

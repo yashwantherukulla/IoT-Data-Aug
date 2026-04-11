@@ -9,7 +9,6 @@ Reference: Ho et al., "Denoising Diffusion Probabilistic Models" (2020).
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
 from omegaconf import DictConfig
 
 from cgdap.models.base import BaseDenoiser, BaseNoiseSchedule, register_schedule
@@ -138,6 +137,48 @@ class DDPMSchedule(BaseNoiseSchedule):
         not_last = (t > 0).float().view(-1, *([1] * (x_t.dim() - 1)))
         return model_mean + not_last * torch.sqrt(posterior_var) * noise
 
+    @torch.no_grad()
+    def p_sample_ddim(
+        self,
+        denoiser: BaseDenoiser,
+        x_t: torch.Tensor,
+        t: torch.Tensor,
+        prev_t: int,
+        condition: torch.Tensor,
+        generator: torch.Generator | None = None,
+        eta: float = 0.0,
+    ) -> torch.Tensor:
+        """DDIM-style reverse step that supports strided timestep schedules."""
+        pred_noise = denoiser(x_t, t, condition)
+
+        alpha_bar_t = self._extract(self.alphas_cumprod, t, x_t.shape)
+        if prev_t >= 0:
+            prev_t_tensor = torch.full_like(t, prev_t)
+            alpha_bar_prev = self._extract(self.alphas_cumprod, prev_t_tensor, x_t.shape)
+        else:
+            alpha_bar_prev = torch.ones_like(alpha_bar_t)
+
+        sqrt_alpha_bar_t = torch.sqrt(alpha_bar_t)
+        sqrt_one_minus_t = torch.sqrt((1.0 - alpha_bar_t).clamp(min=0.0))
+        x0_pred = (x_t - sqrt_one_minus_t * pred_noise) / (sqrt_alpha_bar_t + 1e-10)
+
+        if eta > 0.0:
+            sigma = eta * torch.sqrt(
+                ((1.0 - alpha_bar_prev) / (1.0 - alpha_bar_t + 1e-10)).clamp(min=0.0)
+            ) * torch.sqrt((1.0 - alpha_bar_t / (alpha_bar_prev + 1e-10)).clamp(min=0.0))
+            noise = torch.randn(
+                x_t.shape,
+                generator=generator,
+                device=x_t.device,
+                dtype=x_t.dtype,
+            )
+        else:
+            sigma = torch.zeros_like(alpha_bar_t)
+            noise = torch.zeros_like(x_t)
+
+        dir_xt = torch.sqrt((1.0 - alpha_bar_prev - sigma.pow(2)).clamp(min=0.0)) * pred_noise
+        return torch.sqrt(alpha_bar_prev) * x0_pred + dir_xt + sigma * noise
+
     # ------------------------------------------------------------------
     # Full sampling loop
     # ------------------------------------------------------------------
@@ -162,20 +203,24 @@ class DDPMSchedule(BaseNoiseSchedule):
             raise ValueError("num_steps must be a positive integer.")
         n_steps = min(n_steps, self.train_timesteps)
 
-        # Build a descending schedule that always reaches t=0.
-        raw_timesteps = torch.linspace(
-            self.train_timesteps - 1,
-            0,
-            steps=n_steps,
-            device=device,
-        )
-        timesteps: list[int] = []
-        for t_val in raw_timesteps.tolist():
-            t_int = int(round(t_val))
-            if not timesteps or timesteps[-1] != t_int:
-                timesteps.append(t_int)
-        if timesteps[-1] != 0:
-            timesteps.append(0)
+        # DDPM updates are only exact for consecutive timesteps. When using
+        # fewer inference steps, switch to DDIM-style transitions.
+        if n_steps >= self.train_timesteps:
+            timesteps = list(range(self.train_timesteps - 1, -1, -1))
+        else:
+            raw_timesteps = torch.linspace(
+                self.train_timesteps - 1,
+                0,
+                steps=n_steps,
+                device=device,
+            )
+            timesteps: list[int] = []
+            for t_val in raw_timesteps.tolist():
+                t_int = int(round(t_val))
+                if not timesteps or timesteps[-1] != t_int:
+                    timesteps.append(t_int)
+            if timesteps[-1] != 0:
+                timesteps.append(0)
 
         x = torch.randn(shape, generator=generator, device=device)
         trajectory: list[torch.Tensor] | None = None
@@ -183,9 +228,20 @@ class DDPMSchedule(BaseNoiseSchedule):
             trajectory = [x.detach().cpu()]
         B = shape[0]
 
-        for t_int in timesteps:
+        for idx, t_int in enumerate(timesteps):
+            prev_t_int = timesteps[idx + 1] if idx + 1 < len(timesteps) else -1
             t = torch.full((B,), t_int, dtype=torch.long, device=device)
-            x = self.p_sample(denoiser, x, t, condition, generator=generator)
+            if prev_t_int == t_int - 1:
+                x = self.p_sample(denoiser, x, t, condition, generator=generator)
+            else:
+                x = self.p_sample_ddim(
+                    denoiser,
+                    x,
+                    t,
+                    prev_t=prev_t_int,
+                    condition=condition,
+                    generator=generator,
+                )
             if trajectory is not None:
                 trajectory.append(x.detach().cpu())
 

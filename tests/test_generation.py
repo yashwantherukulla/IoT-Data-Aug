@@ -89,6 +89,9 @@ def test_save_generated_outputs_writes_expected_files():
         assert saved["acc_sample"].exists()
         assert saved["gyr_sample"].exists()
         assert saved["paired_bundle"].exists()
+        assert saved["acc_plot"].exists()
+        assert saved["gyr_plot"].exists()
+        assert saved["paired_plot"].exists()
 
         acc_payload = torch.load(saved["acc_sample"], map_location="cpu", weights_only=True)
         bundle_payload = torch.load(saved["paired_bundle"], map_location="cpu", weights_only=True)

@@ -6,6 +6,8 @@ import logging
 import pathlib
 from typing import Any
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -241,6 +243,8 @@ def save_generated_outputs(
 
 def _collapse_spectrogram(spectrogram: torch.Tensor | np.ndarray) -> np.ndarray:
     spec = spectrogram.detach().cpu().numpy() if isinstance(spectrogram, torch.Tensor) else np.asarray(spectrogram)
+    if spec.ndim == 4:
+        spec = spec[0]
     if spec.ndim == 3:
         spec = spec.mean(axis=0)
     return spec

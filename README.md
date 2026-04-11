@@ -321,6 +321,7 @@ uv run python scripts/generate.py generation.reference_pt="data/processed/HAR/tr
 Outputs:
 - modality-wise `.pt` files under `outputs/generated/<experiment_name>/{acc,gyr}/<activity>/`
 - paired demo bundles under `outputs/generated/<experiment_name>/paired/<activity>/`
+- `.png` preview plots saved next to each generated `.pt` plus a paired comparison image
 
 ### 5. Run Tests
 

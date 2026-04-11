@@ -55,3 +55,4 @@ generation:
   match_reference_label: true
   save_bundle: true
   save_modalities: true
+  save_plots: true

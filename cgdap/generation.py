@@ -6,6 +6,8 @@ import logging
 import pathlib
 from typing import Any
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from omegaconf import DictConfig
 
@@ -14,6 +16,7 @@ from cgdap.models.cgdap import MultimodalCGDAP
 log = logging.getLogger(__name__)
 
 REQUIRED_SAMPLE_KEYS = {"spectrogram", "metrics", "label"}
+METRIC_NAMES = ["temporal_range", "f0_amplitude", "contrast", "flatness", "entropy"]
 
 
 def resolve_checkpoint_path(
@@ -147,6 +150,7 @@ def save_generated_outputs(
     *,
     save_bundle: bool = True,
     save_modalities: bool = True,
+    save_plots: bool = True,
 ) -> dict[str, pathlib.Path]:
     """Persist generated samples to disk for demo or downstream inspection."""
     output_dir = pathlib.Path(output_root)
@@ -183,6 +187,21 @@ def save_generated_outputs(
             sample_path = modality_dir / f"{sample_name}.pt"
             torch.save(payload, sample_path)
             saved_paths[f"{modality}_sample"] = sample_path
+            if save_plots:
+                plot_path = modality_dir / f"{sample_name}.png"
+                _save_spectrogram_plot(
+                    plot_path=plot_path,
+                    spectrogram=payload["spectrogram"],
+                    metrics=payload["metrics"],
+                    activity=activity,
+                    modality=modality,
+                    label=label,
+                    reference_spectrogram=None if reference_sample is None else reference_sample[modality]["spectrogram"],
+                    reference_metrics=None if reference_sample is None else reference_sample[modality]["metrics"],
+                    freq_axis=payload.get("freq_axis_hz"),
+                    time_axis=payload.get("time_axis_s"),
+                )
+                saved_paths[f"{modality}_plot"] = plot_path
 
     if save_bundle:
         paired_dir = output_dir / "paired" / activity
@@ -205,5 +224,170 @@ def save_generated_outputs(
         bundle_path = paired_dir / f"{sample_name}.pt"
         torch.save(bundle_payload, bundle_path)
         saved_paths["paired_bundle"] = bundle_path
+        if save_plots:
+            bundle_plot_path = paired_dir / f"{sample_name}.png"
+            _save_paired_plot(
+                plot_path=bundle_plot_path,
+                generated=generated,
+                metric_targets=metric_targets,
+                activity=activity,
+                label=label,
+                reference_sample=reference_sample,
+            )
+            saved_paths["paired_plot"] = bundle_plot_path
 
     return saved_paths
+
+
+def _collapse_spectrogram(spectrogram: torch.Tensor | np.ndarray) -> np.ndarray:
+    spec = spectrogram.detach().cpu().numpy() if isinstance(spectrogram, torch.Tensor) else np.asarray(spectrogram)
+    if spec.ndim == 3:
+        spec = spec.mean(axis=0)
+    return spec
+
+
+def _metrics_text(metrics: torch.Tensor | np.ndarray | None) -> str:
+    if metrics is None:
+        return ""
+    values = metrics.detach().cpu().numpy() if isinstance(metrics, torch.Tensor) else np.asarray(metrics)
+    return "\n".join(f"{name}: {value:.3f}" for name, value in zip(METRIC_NAMES, values))
+
+
+def _plot_on_axis(
+    ax: plt.Axes,
+    spectrogram: torch.Tensor | np.ndarray,
+    *,
+    title: str,
+    freq_axis: torch.Tensor | np.ndarray | None = None,
+    time_axis: torch.Tensor | np.ndarray | None = None,
+) -> None:
+    spec = _collapse_spectrogram(spectrogram)
+    vmin, vmax = np.percentile(spec, [2, 98])
+
+    if freq_axis is not None and time_axis is not None:
+        freq = freq_axis.detach().cpu().numpy() if isinstance(freq_axis, torch.Tensor) else np.asarray(freq_axis)
+        time = time_axis.detach().cpu().numpy() if isinstance(time_axis, torch.Tensor) else np.asarray(time_axis)
+        extent = [float(time[0]), float(time[-1]), float(freq[0]), float(freq[-1])]
+    else:
+        extent = None
+
+    ax.imshow(
+        spec,
+        origin="lower",
+        aspect="auto",
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
+        extent=extent,
+    )
+    ax.set_title(title, fontsize=10)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Freq")
+
+
+def _save_spectrogram_plot(
+    plot_path: pathlib.Path,
+    spectrogram: torch.Tensor,
+    metrics: torch.Tensor,
+    activity: str,
+    modality: str,
+    label: int,
+    *,
+    reference_spectrogram: torch.Tensor | None = None,
+    reference_metrics: torch.Tensor | None = None,
+    freq_axis: torch.Tensor | None = None,
+    time_axis: torch.Tensor | None = None,
+) -> None:
+    has_reference = reference_spectrogram is not None
+    ncols = 2 if has_reference else 1
+    fig, axes = plt.subplots(1, ncols, figsize=(6 * ncols, 4), squeeze=False)
+
+    if has_reference:
+        _plot_on_axis(
+            axes[0, 0],
+            reference_spectrogram,
+            title=f"Reference {modality}",
+            freq_axis=freq_axis,
+            time_axis=time_axis,
+        )
+        ref_text = _metrics_text(reference_metrics)
+        if ref_text:
+            axes[0, 0].text(1.02, 0.98, ref_text, transform=axes[0, 0].transAxes, va="top", fontsize=8)
+        target_ax = axes[0, 1]
+    else:
+        target_ax = axes[0, 0]
+
+    _plot_on_axis(
+        target_ax,
+        spectrogram,
+        title=f"Generated {modality}",
+        freq_axis=freq_axis,
+        time_axis=time_axis,
+    )
+    target_ax.text(
+        1.02,
+        0.98,
+        _metrics_text(metrics),
+        transform=target_ax.transAxes,
+        va="top",
+        fontsize=8,
+    )
+
+    fig.suptitle(f"{activity} | label={label} | {modality}")
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _save_paired_plot(
+    plot_path: pathlib.Path,
+    generated: dict[str, torch.Tensor],
+    metric_targets: dict[str, torch.Tensor],
+    activity: str,
+    label: int,
+    reference_sample: dict[str, Any] | None,
+) -> None:
+    modalities = list(generated.keys())
+    has_reference = reference_sample is not None
+    nrows = 2 if has_reference else 1
+    fig, axes = plt.subplots(nrows, len(modalities), figsize=(5 * len(modalities), 4 * nrows), squeeze=False)
+
+    for col, modality in enumerate(modalities):
+        if has_reference:
+            ref_ax = axes[0, col]
+            _plot_on_axis(
+                ref_ax,
+                reference_sample[modality]["spectrogram"],
+                title=f"Reference {modality}",
+                freq_axis=reference_sample[modality].get("freq_axis_hz"),
+                time_axis=reference_sample[modality].get("time_axis_s"),
+            )
+            ref_text = _metrics_text(reference_sample[modality]["metrics"])
+            if ref_text:
+                ref_ax.text(1.02, 0.98, ref_text, transform=ref_ax.transAxes, va="top", fontsize=8)
+            gen_ax = axes[1, col]
+        else:
+            gen_ax = axes[0, col]
+
+        freq_axis = None if reference_sample is None else reference_sample[modality].get("freq_axis_hz")
+        time_axis = None if reference_sample is None else reference_sample[modality].get("time_axis_s")
+        _plot_on_axis(
+            gen_ax,
+            generated[modality],
+            title=f"Generated {modality}",
+            freq_axis=freq_axis,
+            time_axis=time_axis,
+        )
+        gen_ax.text(
+            1.02,
+            0.98,
+            _metrics_text(metric_targets[modality]),
+            transform=gen_ax.transAxes,
+            va="top",
+            fontsize=8,
+        )
+
+    fig.suptitle(f"Generated Pair | {activity} | label={label}")
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)

@@ -174,6 +174,7 @@ def main(cfg: DictConfig) -> None:
             reference_sample=reference_sample,
             save_bundle=bool(cfg.generation.save_bundle),
             save_modalities=bool(cfg.generation.save_modalities),
+            save_plots=bool(cfg.generation.save_plots),
         )
         log.info("Saved %s -> %s", sample_name, {k: str(v) for k, v in saved_paths.items()})
 

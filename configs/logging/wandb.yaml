@@ -10,5 +10,7 @@ group: null
 tags: []
 notes: null
 mode: online
+id: null
+resume: allow
 log_every_n_steps: 5
 save_dir: "outputs/logs"

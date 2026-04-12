@@ -363,6 +363,17 @@ Offline W&B:
 uv run python scripts/train.py logging=wandb logging.mode=offline
 ```
 
+Resume the same W&B run after an interrupted training session:
+
+```bash
+uv run python scripts/train.py logging=wandb training.resume=true
+```
+
+Notes:
+- New checkpoints persist `wandb_run_id`, and resume uses that ID to reconnect.
+- Older checkpoints without `wandb_run_id` will start a new W&B run.
+- You can force a run ID manually with `logging.id=<run_id>` and control policy with `logging.resume=allow|must|never`.
+
 ## What Is Implemented vs Not
 
 Implemented:

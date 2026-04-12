@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 class ExperimentLogger:
     """Thin logging wrapper that keeps console and W&B runs on one code path."""
 
-    def __init__(self, cfg: DictConfig) -> None:
+    def __init__(self, cfg: DictConfig, *, resume_run_id: str | None = None) -> None:
         self.cfg = cfg
         self.backend = str(cfg.logging.backend).lower()
         self.run: Any | None = None
@@ -71,6 +71,11 @@ class ExperimentLogger:
             "mode": str(cfg.logging.get("mode", "online")),
             "name": cfg.logging.get("name") or cfg.experiment_name,
         }
+        run_id = resume_run_id or cfg.logging.get("id")
+        if run_id not in (None, ""):
+            init_kwargs["id"] = str(run_id)
+            init_kwargs["resume"] = str(cfg.logging.get("resume", "allow"))
+
         for field in ("entity", "group", "notes", "tags"):
             value = cfg.logging.get(field)
             if value not in (None, ""):
@@ -86,6 +91,12 @@ class ExperimentLogger:
     @property
     def enabled(self) -> bool:
         return self.run is not None
+
+    @property
+    def run_id(self) -> str | None:
+        if not self.enabled:
+            return None
+        return getattr(self.run, "id", None)
 
     def log(self, metrics: dict[str, float], *, step: int | None = None) -> None:
         if not self.enabled:
@@ -154,8 +165,8 @@ class CGDAPTrainer:
         log.info("Using device: %s", self.device)
         if not TQDM_AVAILABLE:
             log.warning("`tqdm` is not installed; progress bars are disabled until you run `uv sync`.")
-        self.experiment_logger = ExperimentLogger(cfg)
         self.global_step = 0
+        self.resume_wandb_run_id: str | None = None
 
         # Paths
         processed_root = pathlib.Path(cfg.dataset.paths.processed)
@@ -211,6 +222,8 @@ class CGDAPTrainer:
         if bool(cfg.training.get("resume", False)):
             self._load_resume_checkpoint(cfg.training.get("resume_checkpoint"))
 
+        self.experiment_logger = ExperimentLogger(cfg, resume_run_id=self.resume_wandb_run_id)
+
     def _resolve_resume_checkpoint(self, resume_checkpoint: str | None) -> pathlib.Path:
         if resume_checkpoint:
             candidate = pathlib.Path(str(resume_checkpoint))
@@ -246,6 +259,7 @@ class CGDAPTrainer:
         self.global_step = int(payload.get("global_step", 0))
         last_epoch = int(payload.get("epoch", -1))
         self.start_epoch = last_epoch + 1
+        self.resume_wandb_run_id = payload.get("wandb_run_id")
 
         if bool(self.cfg.training.get("restore_rng_state", True)):
             cpu_rng_state = payload.get("cpu_rng_state")
@@ -405,6 +419,7 @@ class CGDAPTrainer:
                 "cpu_rng_state": torch.random.get_rng_state(),
                 "cuda_rng_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                 "python_rng_state": random.getstate(),
+                "wandb_run_id": self.experiment_logger.run_id,
                 "metrics": metrics,
             },
             path,

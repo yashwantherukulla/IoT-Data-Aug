@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import random
 from typing import Any
 
 import torch
@@ -205,6 +206,67 @@ class CGDAPTrainer:
         ckpt_dir = pathlib.Path(cfg.training.checkpoint_dir) / cfg.experiment_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.ckpt_dir = ckpt_dir
+        self.start_epoch = 0
+
+        if bool(cfg.training.get("resume", False)):
+            self._load_resume_checkpoint(cfg.training.get("resume_checkpoint"))
+
+    def _resolve_resume_checkpoint(self, resume_checkpoint: str | None) -> pathlib.Path:
+        if resume_checkpoint:
+            candidate = pathlib.Path(str(resume_checkpoint))
+        else:
+            candidate = self.ckpt_dir
+
+        if candidate.is_file():
+            return candidate
+
+        if not candidate.exists():
+            raise FileNotFoundError(
+                f"Resume checkpoint path does not exist: {candidate}. "
+                "Disable training.resume or provide training.resume_checkpoint."
+            )
+
+        checkpoints = sorted(candidate.glob("ckpt_epoch*.pt"))
+        if not checkpoints:
+            raise FileNotFoundError(
+                f"No checkpoints matching ckpt_epoch*.pt found under {candidate}."
+            )
+        return checkpoints[-1]
+
+    def _load_resume_checkpoint(self, resume_checkpoint: str | None) -> None:
+        checkpoint_path = self._resolve_resume_checkpoint(resume_checkpoint)
+        payload = torch.load(checkpoint_path, map_location=self.device)
+
+        self.model.load_state_dict(payload["model_state_dict"])
+        if "optimizer_state_dict" in payload:
+            self.optimizer.load_state_dict(payload["optimizer_state_dict"])
+        if self.scheduler is not None and payload.get("scheduler_state_dict") is not None:
+            self.scheduler.load_state_dict(payload["scheduler_state_dict"])
+
+        self.global_step = int(payload.get("global_step", 0))
+        last_epoch = int(payload.get("epoch", -1))
+        self.start_epoch = last_epoch + 1
+
+        if bool(self.cfg.training.get("restore_rng_state", True)):
+            cpu_rng_state = payload.get("cpu_rng_state")
+            if cpu_rng_state is not None:
+                torch.random.set_rng_state(cpu_rng_state)
+
+            cuda_rng_state = payload.get("cuda_rng_state")
+            if cuda_rng_state is not None and torch.cuda.is_available():
+                torch.cuda.set_rng_state_all(cuda_rng_state)
+
+            py_rng_state = payload.get("python_rng_state")
+            if py_rng_state is not None:
+                random.setstate(py_rng_state)
+
+        log.info(
+            "Resumed from checkpoint %s | last_epoch=%d next_epoch=%d global_step=%d",
+            checkpoint_path,
+            last_epoch,
+            self.start_epoch,
+            self.global_step,
+        )
 
     # ------------------------------------------------------------------
     # Training
@@ -338,6 +400,11 @@ class CGDAPTrainer:
                 "epoch": epoch,
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
+                "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler is not None else None,
+                "global_step": self.global_step,
+                "cpu_rng_state": torch.random.get_rng_state(),
+                "cuda_rng_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                "python_rng_state": random.getstate(),
                 "metrics": metrics,
             },
             path,
@@ -349,7 +416,16 @@ class CGDAPTrainer:
         log.info("Starting CGDAP training | experiment: %s", self.cfg.experiment_name)
         log.info("Config:\n%s", OmegaConf.to_yaml(self.cfg))
         log.info("=" * 60)
-        epoch_progress = trange(self.max_epochs, desc="Epochs", dynamic_ncols=True)
+
+        if self.start_epoch >= self.max_epochs:
+            log.warning(
+                "Resume requested, but start_epoch=%d is >= max_epochs=%d. Nothing to do.",
+                self.start_epoch,
+                self.max_epochs,
+            )
+            return
+
+        epoch_progress = trange(self.start_epoch, self.max_epochs, desc="Epochs", dynamic_ncols=True)
         try:
             for epoch in epoch_progress:
                 train_metrics = self.train_epoch(epoch)

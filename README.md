@@ -280,6 +280,18 @@ Smoke-style reduced run:
 uv run python scripts/train.py model.unet.base_channels=32 training.batch_size=4 training.max_epochs=2
 ```
 
+Resume from the latest checkpoint for the same experiment:
+
+```bash
+uv run python scripts/train.py experiment_name=test_run training.resume=true
+```
+
+Resume from an explicit checkpoint file:
+
+```bash
+uv run python scripts/train.py training.resume=true training.resume_checkpoint="outputs/checkpoints/test_run/ckpt_epoch0012.pt"
+```
+
 Outputs:
 - Hydra run directories: `outputs/<date>/<time>/`
 - Checkpoints: `outputs/checkpoints/<experiment_name>/ckpt_epochXXXX.pt`

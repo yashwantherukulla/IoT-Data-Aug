@@ -7,6 +7,7 @@ classifiers:
   - transformer
 
 batch_size: null
+max_val_samples: null  # cap the number of val samples processed (null = all)
 n_epochs: 20
 patience: 5
 min_delta: 0.0

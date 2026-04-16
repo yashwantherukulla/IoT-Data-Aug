@@ -843,12 +843,16 @@ def main(cfg: DictConfig) -> None:
     fig_dir = out_root / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Generate for ALL val samples ──────────────────────────────────
-    log.info("Starting generation for all %d val samples...", len(val_dataset))
+    # ── Generate for val samples (optionally capped) ─────────────────
+    max_val_samples_raw = cfg.evaluation.get("max_val_samples")
+    max_val_samples = int(max_val_samples_raw) if max_val_samples_raw is not None else None
+    n_to_process = min(max_val_samples, len(val_dataset)) if max_val_samples is not None else len(val_dataset)
+    log.info("Starting generation for %d / %d val samples...", n_to_process, len(val_dataset))
     records = collect_eval_data(
         cfg, val_dataset, label_map, model, device,
         num_steps=num_steps,
         seed=int(cfg.seed),
+        max_samples=max_val_samples,
     )
     log.info("Done generating. Computing aggregate metrics...")
 

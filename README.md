@@ -334,8 +334,9 @@ uv run python scripts/run_eval_report.py
 With an explicit checkpoint:
 
 ```bash
-.venv\Scripts\python.exe scripts/run_eval_report.py \
-  evaluation.augmentation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0039.pt"
+uv run scripts/run_eval_report.py \
+  evaluation.augmentation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0045.pt" \
+  evaluation.max_val_samples=50
 ```
 
 Fewer diffusion steps for faster runs (trades some quality):

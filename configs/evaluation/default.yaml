@@ -20,7 +20,7 @@ augmentation:
   enabled: true
   samples_per_real: 1
   checkpoint_path: null
-  num_steps: null
+  num_steps: 1000
   seed: ${seed}
 
 product_eval:

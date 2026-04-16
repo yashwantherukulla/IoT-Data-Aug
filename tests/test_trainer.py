@@ -7,6 +7,7 @@ import torch
 from omegaconf import OmegaConf
 
 from cgdap.training.trainer import CGDAPTrainer, ExperimentLogger, compute_grad_norm
+from cgdap.utils import batch_to_device
 
 
 def _write_sample(path: Path, *, label: int, activity: str) -> None:
@@ -84,6 +85,7 @@ def _build_cfg(processed_root: Path, tmp_path: Path) -> OmegaConf:
                     "betas": [0.9, 0.999],
                     "weight_decay": 0.0,
                     "eps": 1.0e-8,
+                    "clip_norm": 1.0,
                 },
                 "scheduler": {"name": "none"},
                 "loss": {
@@ -151,6 +153,35 @@ def test_experiment_logger_console_accepts_non_scalar_payload():
     logger.log({"chart": object()})
 
 
+def test_batch_to_device_moves_tensor_fields_and_preserves_metadata():
+    batch = {
+        "label": torch.tensor([1, 0]),
+        "activity": ["walking", "running"],
+        "acc": {
+            "spectrogram": torch.rand(2, 3, 8, 8),
+            "metrics": torch.rand(2, 5),
+            "subject": ["s1", "s2"],
+        },
+        "gyr": {
+            "spectrogram": torch.rand(2, 3, 8, 8),
+            "metrics": torch.rand(2, 5),
+            "window_index": torch.tensor([0, 1]),
+        },
+    }
+
+    result = batch_to_device(batch, torch.device("cpu"))
+
+    assert result is batch
+    assert result["label"].device.type == "cpu"
+    assert result["acc"]["spectrogram"].device.type == "cpu"
+    assert result["acc"]["metrics"].device.type == "cpu"
+    assert result["gyr"]["spectrogram"].device.type == "cpu"
+    assert result["gyr"]["metrics"].device.type == "cpu"
+    assert result["activity"] == ["walking", "running"]
+    assert result["acc"]["subject"] == ["s1", "s2"]
+    assert torch.equal(result["gyr"]["window_index"], torch.tensor([0, 1]))
+
+
 def test_trainer_runs_product_eval_each_epoch_without_checkpoint_reload():
     root = Path("tmp_trainer_product_eval")
     if root.exists():
@@ -194,6 +225,46 @@ def test_trainer_runs_product_eval_each_epoch_without_checkpoint_reload():
         assert trainer.product_evaluator.calls == 2
         assert any("product_eval/pair_rmse" in payload for payload in logged_payloads)
         assert any("train_epoch/L_metric_temporal_range" in payload for payload in logged_payloads)
+    finally:
+        if root.exists():
+            shutil.rmtree(root)
+
+
+def test_trainer_uses_configured_clip_norm_and_zero_grad_set_to_none():
+    root = Path("tmp_trainer_clip_norm")
+    if root.exists():
+        shutil.rmtree(root)
+    try:
+        processed_root = _build_processed_root(root)
+        cfg = _build_cfg(processed_root, root)
+        cfg.training.optimizer.clip_norm = 0.25
+        trainer = CGDAPTrainer(cfg)
+
+        clip_norm_calls: list[float] = []
+        zero_grad_calls: list[bool] = []
+
+        def fake_zero_grad(*, set_to_none: bool = False) -> None:
+            zero_grad_calls.append(set_to_none)
+
+        def fake_clip_grad_norm_(parameters, max_norm: float):
+            del parameters
+            clip_norm_calls.append(float(max_norm))
+            return torch.tensor(max_norm)
+
+        trainer.optimizer.zero_grad = fake_zero_grad  # type: ignore[method-assign]
+        original_clip_grad_norm = torch.nn.utils.clip_grad_norm_
+        original_step = trainer.optimizer.step
+        trainer.optimizer.step = lambda: None
+        torch.nn.utils.clip_grad_norm_ = fake_clip_grad_norm_
+        try:
+            trainer.train_epoch(0)
+        finally:
+            trainer.optimizer.step = original_step
+            torch.nn.utils.clip_grad_norm_ = original_clip_grad_norm
+
+        assert zero_grad_calls
+        assert all(zero_grad_calls)
+        assert clip_norm_calls == [0.25, 0.25]
     finally:
         if root.exists():
             shutil.rmtree(root)

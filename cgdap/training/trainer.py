@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from cgdap.data.dataset import build_label_map, make_paired_loader
 from cgdap.evaluation.product_eval import ProductEvaluator
 from cgdap.models.cgdap import MultimodalCGDAP
+from cgdap.utils import batch_to_device
 
 try:
     from tqdm.auto import tqdm, trange
@@ -227,6 +228,10 @@ class CGDAPTrainer:
         self.save_every: int = cfg.training.save_every_n_epochs
         self.val_every: int = cfg.training.val_every_n_epochs
         self.n_classes: int = n_classes
+        raw_clip_norm = cfg.training.optimizer.get("clip_norm", 1.0)
+        self.clip_grad_norm: float | None = None if raw_clip_norm is None else float(raw_clip_norm)
+        if self.clip_grad_norm is not None and self.clip_grad_norm <= 0.0:
+            raise ValueError("training.optimizer.clip_norm must be positive or null.")
 
         ckpt_dir = pathlib.Path(cfg.training.checkpoint_dir) / cfg.experiment_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -321,17 +326,14 @@ class CGDAPTrainer:
             dynamic_ncols=True,
         )
         for batch in progress:
-            # Move to device
-            for mod in self.cfg.dataset.modalities:
-                batch[mod]["spectrogram"] = batch[mod]["spectrogram"].to(self.device)
-                batch[mod]["metrics"] = batch[mod]["metrics"].to(self.device)
-            batch["label"] = batch["label"].to(self.device)
+            batch_to_device(batch, self.device)
 
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             loss_dict = self.model(batch, n_classes=self.n_classes)
             loss_dict["L_total"].backward()
             grad_norm_preclip = compute_grad_norm(self.model.parameters())
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            if self.clip_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.clip_grad_norm)
             self.optimizer.step()
 
             for k, v in loss_dict.items():
@@ -410,10 +412,7 @@ class CGDAPTrainer:
             dynamic_ncols=True,
         )
         for batch_idx, batch in enumerate(progress):
-            for mod in self.cfg.dataset.modalities:
-                batch[mod]["spectrogram"] = batch[mod]["spectrogram"].to(self.device)
-                batch[mod]["metrics"] = batch[mod]["metrics"].to(self.device)
-            batch["label"] = batch["label"].to(self.device)
+            batch_to_device(batch, self.device)
 
             timesteps, noises = self._build_validation_controls(batch, batch_idx)
             loss_dict = self.model(

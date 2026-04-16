@@ -13,6 +13,7 @@ optimizer:
   betas:         [0.9, 0.999]
   weight_decay:  0.0
   eps:           1.0e-8
+  clip_norm:     1.0
 
 # ---- LR Scheduler -----------------------------------------------
 scheduler:

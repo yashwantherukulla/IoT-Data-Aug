@@ -24,6 +24,7 @@ from cgdap.data.dataset import PairedDataset, build_label_map
 from cgdap.evaluation.deepsense import DeepSenseClassifier
 from cgdap.evaluation.transformer import HATransformerClassifier
 from cgdap.models.cgdap import MultimodalCGDAP
+from cgdap.utils import batch_to_device
 
 log = logging.getLogger(__name__)
 
@@ -50,13 +51,6 @@ class SyntheticPairedDataset(Dataset):
             }
         return result
 
-
-def move_batch_to_device(batch: dict[str, Any], device: torch.device) -> None:
-    for mod in [k for k in batch if k not in ("label", "activity")]:
-        batch[mod]["spectrogram"] = batch[mod]["spectrogram"].to(device)
-    batch["label"] = batch["label"].to(device)
-
-
 def evaluate_accuracy(
     model: torch.nn.Module,
     val_loader: DataLoader,
@@ -67,7 +61,7 @@ def evaluate_accuracy(
     total = 0
     with torch.no_grad():
         for batch in val_loader:
-            move_batch_to_device(batch, device)
+            batch_to_device(batch, device)
             logits = model(batch)
             labels = batch["label"]
             correct += (logits.argmax(1) == labels).sum().item()
@@ -105,7 +99,7 @@ def train_classifier(
         steps = 0
 
         for batch in train_loader:
-            move_batch_to_device(batch, device)
+            batch_to_device(batch, device)
             labels = batch["label"]
             optimizer.zero_grad()
             logits = model(batch)

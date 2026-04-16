@@ -634,139 +634,673 @@ HTML_TEMPLATE = """\
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>CGDAP Evaluation Report — {experiment}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
   *{{box-sizing:border-box;margin:0;padding:0;}}
-  body{{font-family:'Inter',sans-serif;background:#f0f4f8;color:#2d3748;}}
-  header{{background:linear-gradient(135deg,#1a365d 0%,#2b6cb0 60%,#4299e1 100%);
-          color:white;padding:2.5rem 3rem;}}
-  header h1{{font-size:2rem;font-weight:700;letter-spacing:-0.5px;}}
-  header p{{opacity:0.85;margin-top:0.4rem;font-size:0.95rem;}}
-  .badge{{display:inline-block;background:rgba(255,255,255,0.2);border-radius:6px;
-          padding:0.25rem 0.75rem;font-size:0.82rem;margin-top:0.6rem;margin-right:0.5rem;}}
-  main{{max-width:1200px;margin:2rem auto;padding:0 1.5rem;}}
+  :root{{
+    --blue-dark:#1a365d;--blue-mid:#2b6cb0;--blue-light:#4299e1;--blue-pale:#ebf8ff;
+    --green:#38a169;--green-pale:#f0fff4;--orange:#dd6b20;--orange-pale:#fffaf0;
+    --red:#e53e3e;--red-pale:#fff5f5;--purple:#805ad5;--purple-pale:#faf5ff;
+    --yellow:#d69e2e;--yellow-pale:#fffff0;--gray-50:#f7fafc;--gray-100:#edf2f7;
+    --gray-200:#e2e8f0;--gray-400:#a0aec0;--gray-600:#718096;--gray-800:#2d3748;
+    --shadow-sm:0 1px 3px rgba(0,0,0,0.08);--shadow-md:0 4px 12px rgba(0,0,0,0.1);
+    --radius:12px;
+  }}
+  body{{font-family:'Inter',sans-serif;background:#f0f4f8;color:var(--gray-800);line-height:1.6;}}
+
+  /* ── Header ── */
+  header{{
+    background:linear-gradient(135deg,var(--blue-dark) 0%,var(--blue-mid) 60%,var(--blue-light) 100%);
+    color:white;padding:2.5rem 3rem 2rem;
+  }}
+  header h1{{font-size:2rem;font-weight:800;letter-spacing:-0.5px;}}
+  header .subtitle{{opacity:0.85;margin-top:0.4rem;font-size:0.95rem;}}
+  .badge{{display:inline-block;background:rgba(255,255,255,0.18);border-radius:6px;
+          padding:0.25rem 0.75rem;font-size:0.82rem;margin-top:0.6rem;margin-right:0.5rem;
+          backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.25);}}
+
+  /* ── Layout ── */
+  main{{max-width:1260px;margin:2rem auto;padding:0 1.5rem;}}
+
+  /* ── Intro / How-to-read box ── */
+  .intro-box{{
+    background:linear-gradient(135deg,var(--blue-pale),#fff);
+    border:1.5px solid #bee3f8;border-radius:var(--radius);
+    padding:1.6rem 2rem;margin-bottom:2rem;
+    box-shadow:var(--shadow-sm);
+  }}
+  .intro-box h2{{font-size:1.1rem;font-weight:700;color:var(--blue-mid);margin-bottom:0.8rem;}}
+  .intro-box p{{font-size:0.9rem;color:var(--gray-800);margin-bottom:0.6rem;}}
+  .intro-box ul{{margin:0.4rem 0 0.6rem 1.4rem;font-size:0.88rem;}}
+  .intro-box li{{margin-bottom:0.25rem;}}
+
+  /* ── KPI grid ── */
   .kpi-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:2rem;}}
-  .kpi{{background:white;border-radius:12px;padding:1.4rem 1.6rem;
-        box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:4px solid {accent};}}
-  .kpi .label{{font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em;color:#718096;}}
-  .kpi .value{{font-size:1.9rem;font-weight:700;color:#1a365d;margin-top:0.25rem;}}
-  .kpi .sub{{font-size:0.75rem;color:#a0aec0;margin-top:0.2rem;}}
-  .section{{background:white;border-radius:12px;padding:1.8rem;
-            box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:1.8rem;}}
-  .section h2{{font-size:1.15rem;font-weight:600;color:#2b6cb0;border-bottom:2px solid #bee3f8;
-               padding-bottom:0.5rem;margin-bottom:1.2rem;}}
+  .kpi{{
+    background:white;border-radius:var(--radius);padding:1.4rem 1.6rem;
+    box-shadow:var(--shadow-sm);border-left:4px solid var(--blue-mid);
+    transition:box-shadow .2s;
+  }}
+  .kpi:hover{{box-shadow:var(--shadow-md);}}
+  .kpi .k-label{{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-600);font-weight:600;}}
+  .kpi .k-value{{font-size:1.85rem;font-weight:800;color:var(--blue-dark);margin-top:0.2rem;}}
+  .kpi .k-sub{{font-size:0.73rem;color:var(--gray-400);margin-top:0.2rem;}}
+  .kpi .k-status{{
+    display:inline-block;font-size:0.72rem;font-weight:600;border-radius:999px;
+    padding:0.15rem 0.6rem;margin-top:0.5rem;
+  }}
+  .status-good{{background:#c6f6d5;color:#22543d;}}
+  .status-ok{{background:#feebc8;color:#7b341e;}}
+  .status-bad{{background:#fed7d7;color:#742a2a;}}
+
+  /* ── Generic section card ── */
+  .section{{
+    background:white;border-radius:var(--radius);padding:1.8rem;
+    box-shadow:var(--shadow-sm);margin-bottom:1.8rem;
+  }}
+  .section h2{{
+    font-size:1.15rem;font-weight:700;color:var(--blue-mid);
+    border-bottom:2px solid #bee3f8;padding-bottom:0.5rem;margin-bottom:1.2rem;
+  }}
+
+  /* ── Figure grid / cards ── */
   .fig-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:1.2rem;}}
-  .fig-card{{border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;}}
+  .fig-card{{border-radius:10px;overflow:hidden;border:1px solid var(--gray-200);}}
   .fig-card img{{width:100%;display:block;}}
-  .fig-caption{{padding:0.6rem 0.9rem;font-size:0.8rem;color:#718096;background:#f7fafc;}}
-  footer{{text-align:center;color:#a0aec0;font-size:0.78rem;padding:2rem 0 3rem;}}
+  .fig-caption{{
+    padding:0.6rem 0.9rem;font-size:0.8rem;color:var(--gray-600);
+    background:var(--gray-50);border-top:1px solid var(--gray-200);
+  }}
+
+  /* ── Collapsible details ── */
+  .explainer{{
+    border:1px solid var(--gray-200);border-radius:10px;
+    margin-top:1rem;overflow:hidden;
+  }}
+  .explainer summary{{
+    cursor:pointer;padding:0.85rem 1.1rem;font-weight:600;font-size:0.9rem;
+    background:var(--gray-50);color:var(--blue-mid);
+    display:flex;align-items:center;gap:0.5rem;list-style:none;
+    user-select:none;
+  }}
+  .explainer summary::-webkit-details-marker{{display:none;}}
+  .explainer summary::before{{
+    content:"▶";font-size:0.65rem;color:var(--gray-400);
+    transition:transform .2s;display:inline-block;
+  }}
+  .explainer[open] summary::before{{transform:rotate(90deg);}}
+  .explainer-body{{
+    padding:1.1rem 1.3rem;font-size:0.88rem;line-height:1.7;
+    background:white;border-top:1px solid var(--gray-200);
+  }}
+  .explainer-body p{{margin-bottom:0.7rem;}}
+  .explainer-body ul{{margin:0.3rem 0 0.7rem 1.4rem;}}
+  .explainer-body li{{margin-bottom:0.25rem;}}
+  .explainer-body strong{{color:var(--blue-dark);}}
+
+  /* ── Reference range table (blood-test style) ── */
+  .ref-table{{
+    width:100%;border-collapse:collapse;margin:0.8rem 0;font-size:0.83rem;
+    border-radius:8px;overflow:hidden;
+  }}
+  .ref-table th{{
+    background:var(--blue-dark);color:white;padding:0.5rem 0.75rem;
+    text-align:left;font-weight:600;font-size:0.8rem;
+  }}
+  .ref-table td{{padding:0.45rem 0.75rem;border-bottom:1px solid var(--gray-100);}}
+  .ref-table tr:last-child td{{border-bottom:none;}}
+  .ref-table tr:nth-child(even) td{{background:var(--gray-50);}}
+  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle;}}
+  .dot-green{{background:#38a169;}}
+  .dot-yellow{{background:#d69e2e;}}
+  .dot-red{{background:#e53e3e;}}
+
+  /* ── Metric grid for explainers ── */
+  .metric-cards{{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;
+    margin-top:1rem;
+  }}
+  .metric-card{{
+    border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;
+  }}
+  .metric-card-header{{
+    padding:0.75rem 1rem;font-weight:700;font-size:0.9rem;
+    background:var(--blue-dark);color:white;
+  }}
+  .metric-card-body{{padding:0.9rem 1rem;font-size:0.85rem;}}
+  .metric-card-body p{{margin-bottom:0.5rem;}}
+
+  /* ── Divider ── */
+  hr.section-hr{{border:none;border-top:2px solid var(--gray-200);margin:1.5rem 0;}}
+
+  /* ── Footer ── */
+  footer{{text-align:center;color:var(--gray-400);font-size:0.78rem;padding:2rem 0 3rem;}}
 </style>
 </head>
 <body>
 <header>
-  <h1>🔬 CGDAP Evaluation Report</h1>
-  <p>Generative model quality assessment on the full val split</p>
+  <h1>CGDAP Evaluation Report</h1>
+  <p class="subtitle">Generative model quality assessment — how well does the model learn to synthesise sensor data?</p>
   <span class="badge">Experiment: {experiment}</span>
   <span class="badge">Checkpoint: {checkpoint}</span>
   <span class="badge">Generated: {timestamp}</span>
   <span class="badge">Val samples: {n_val}</span>
-  <span class="badge">Mode: {aug_mode}</span>
+  <span class="badge">Augmentation mode: {aug_mode}</span>
 </header>
+
 <main>
 
-<div class="kpi-grid">
-  <div class="kpi" style="border-left-color:#e53e3e;">
-    <div class="label">Pair RMSE</div>
-    <div class="value">{pair_rmse}</div>
-    <div class="sub">Target vs extracted metrics</div>
-  </div>
-  <div class="kpi" style="border-left-color:#dd6b20;">
-    <div class="label">Metric MAE</div>
-    <div class="value">{metric_mae}</div>
-    <div class="sub">Mean absolute error</div>
-  </div>
-  <div class="kpi" style="border-left-color:#38a169;">
-    <div class="label">Std-ratio</div>
-    <div class="value">{std_ratio}</div>
-    <div class="sub">σ_synth / σ_real (1.0 = perfect)</div>
-  </div>
-  <div class="kpi" style="border-left-color:#3182ce;">
-    <div class="label">NN Distance</div>
-    <div class="value">{nn_dist}</div>
-    <div class="sub">Synth → val real bank (metric space)</div>
-  </div>
-  <div class="kpi" style="border-left-color:#805ad5;">
-    <div class="label">Diversity</div>
-    <div class="value">{diversity}</div>
-    <div class="sub">Mean pairwise distance (synth)</div>
-  </div>
-  <div class="kpi" style="border-left-color:#d69e2e;">
-    <div class="label">Worst-activity RMSE</div>
-    <div class="value">{worst_rmse}</div>
-    <div class="sub">Highest per-activity pair RMSE</div>
-  </div>
+<!-- ═══════════════════════════════════════════════════════════════
+     HOW TO READ THIS REPORT
+════════════════════════════════════════════════════════════════ -->
+<div class="intro-box">
+  <h2>How to Read This Report — A Non-Technical Guide</h2>
+  <p>
+    This report evaluates a machine-learning model called <strong>CGDAP</strong> (Conditioned Generative
+    Data Augmentation Pipeline). Its job is to <em>synthesise</em> (invent) realistic IoT sensor
+    recordings that look like real ones. Think of it like a very capable photocopier for sensor data —
+    the better the model, the harder it is to tell the copy from the original.
+  </p>
+  <p>
+    Every metric below is a different way to measure how good that "photocopier" is.
+    Like a blood-test report, each metric has a <strong>healthy range</strong> — we explain
+    exactly what that range is and what it means for each one.
+  </p>
+  <ul>
+    <li><strong>Green</strong> results are within the healthy/expected range — great news.</li>
+    <li><strong>Orange/Yellow</strong> results are borderline and worth monitoring.</li>
+    <li><strong>Red</strong> results indicate something the model is struggling with.</li>
+  </ul>
+  <p style="margin-top:0.4rem;font-size:0.83rem;color:#718096;">
+    Each section also has a <em>"What this measures &amp; how to interpret it"</em> expandable panel
+    — click the ▶ arrows to read the detailed explanation for any metric.
+  </p>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     KPI CARDS
+════════════════════════════════════════════════════════════════ -->
+<div class="kpi-grid">
+
+  <div class="kpi" style="border-left-color:var(--red);">
+    <div class="k-label">Pair RMSE</div>
+    <div class="k-value">{pair_rmse}</div>
+    <div class="k-sub">Target vs extracted metrics</div>
+    <span class="k-status {pair_rmse_status}">{pair_rmse_label}</span>
+  </div>
+
+  <div class="kpi" style="border-left-color:var(--orange);">
+    <div class="k-label">Metric MAE</div>
+    <div class="k-value">{metric_mae}</div>
+    <div class="k-sub">Mean absolute error</div>
+    <span class="k-status {metric_mae_status}">{metric_mae_label}</span>
+  </div>
+
+  <div class="kpi" style="border-left-color:var(--green);">
+    <div class="k-label">Std-ratio</div>
+    <div class="k-value">{std_ratio}</div>
+    <div class="k-sub">σ_synth / σ_real &nbsp;(1.0 = perfect)</div>
+    <span class="k-status {std_ratio_status}">{std_ratio_label}</span>
+  </div>
+
+  <div class="kpi" style="border-left-color:var(--blue-mid);">
+    <div class="k-label">NN Distance</div>
+    <div class="k-value">{nn_dist}</div>
+    <div class="k-sub">Synth → val real bank (metric space)</div>
+    <span class="k-status {nn_dist_status}">{nn_dist_label}</span>
+  </div>
+
+  <div class="kpi" style="border-left-color:var(--purple);">
+    <div class="k-label">Diversity</div>
+    <div class="k-value">{diversity}</div>
+    <div class="k-sub">Mean pairwise distance (synth)</div>
+    <span class="k-status {diversity_status}">{diversity_label}</span>
+  </div>
+
+  <div class="kpi" style="border-left-color:var(--yellow);">
+    <div class="k-label">Worst-activity RMSE</div>
+    <div class="k-value">{worst_rmse}</div>
+    <div class="k-sub">Hardest activity for the model</div>
+    <span class="k-status {worst_rmse_status}">{worst_rmse_label}</span>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     METRIC EXPLAINERS (collapsible)
+════════════════════════════════════════════════════════════════ -->
 <div class="section">
-  <h2>📊 Summary Metrics Table</h2>
+  <h2>Metric Reference Guide — Understanding Your Results</h2>
+  <p style="font-size:0.88rem;color:var(--gray-600);margin-bottom:1rem;">
+    Click any metric below to expand its full explanation, analogy, and healthy reference range.
+  </p>
+
+  <!-- 1. Pair RMSE -->
+  <details class="explainer">
+    <summary>Pair RMSE — How far off is each generated sample from its target?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> For every validation sample, the model is given a target
+        (what values the generated sensor data should have) and then asked to generate a spectrogram.
+        The pipeline then <em>extracts</em> the actual values from the generated image and compares
+        them to those targets. <strong>RMSE</strong> (Root Mean Squared Error) is the average gap
+        between what was asked for and what was actually produced — penalising large misses more
+        heavily than small ones.
+      </p>
+      <p>
+        <strong>Analogy:</strong> Imagine you ask someone to bake a cake at exactly 180 °C. RMSE
+        measures how far the actual oven temperature was from 180 °C — averaged over every cake baked.
+        A smaller RMSE means the oven (model) is more reliably accurate.
+      </p>
+      <table class="ref-table">
+        <tr><th>Range</th><th>Interpretation</th><th>Action</th></tr>
+        <tr><td><span class="dot dot-green"></span>0.00 – 0.05</td><td>Excellent — model follows targets very closely</td><td>No action needed</td></tr>
+        <tr><td><span class="dot dot-yellow"></span>0.05 – 0.15</td><td>Good — minor deviations, acceptable in practice</td><td>Monitor; check per-metric MAE for culprits</td></tr>
+        <tr><td><span class="dot dot-red"></span>&gt; 0.15</td><td>Poor — model regularly misses targets significantly</td><td>Retrain with more steps or larger model</td></tr>
+      </table>
+      <p><strong>Tip:</strong> The scatter plot in the next section shows <em>which</em> metrics and activities drive the RMSE up.</p>
+    </div>
+  </details>
+
+  <!-- 2. Metric MAE -->
+  <details class="explainer">
+    <summary>Metric MAE — On average, how wrong is the model?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> <strong>MAE</strong> (Mean Absolute Error) is similar to
+        RMSE but treats all errors equally (no squaring). It is the plain average of
+        |target − generated| across every metric and every sample.
+      </p>
+      <p>
+        <strong>Analogy:</strong> If you shoot 10 arrows at a bullseye, MAE is the average distance
+        of each arrow from the centre. RMSE would give extra weight to the arrows that went really
+        wide. MAE gives you a simple, intuitive "how wrong on average" number.
+      </p>
+      <table class="ref-table">
+        <tr><th>Range</th><th>Interpretation</th><th>Action</th></tr>
+        <tr><td><span class="dot dot-green"></span>0.00 – 0.04</td><td>Excellent fidelity</td><td>—</td></tr>
+        <tr><td><span class="dot dot-yellow"></span>0.04 – 0.12</td><td>Acceptable — check per-metric breakdown</td><td>Focus training on high-MAE metrics</td></tr>
+        <tr><td><span class="dot dot-red"></span>&gt; 0.12</td><td>High error — model may be ill-conditioned</td><td>Investigate metric extractor and conditioning signal</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <!-- 3. Std Ratio -->
+  <details class="explainer">
+    <summary>Std-Ratio — Does the model produce enough variety?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> Standard deviation (σ) measures <em>spread</em> — how much
+        values vary across samples. The std-ratio compares the spread of <em>generated</em> data to the
+        spread of <em>real</em> data. A ratio of 1.0 means the model produces exactly as much variety
+        as real recordings. Below 1 means the model is "playing it safe" (mode collapse); above 1
+        means it is over-generating noisy variety.
+      </p>
+      <p>
+        <strong>Analogy:</strong> Think of writing — if a ghostwriter is asked to mimic an author's
+        style, a std-ratio of 1.0 means their sentence lengths vary just as much as the original.
+        A ratio of 0.3 means they always write medium-length sentences (too uniform). A ratio of 2.0
+        means they write wildly inconsistent sentences (too random).
+      </p>
+      <table class="ref-table">
+        <tr><th>Range</th><th>Interpretation</th><th>Action</th></tr>
+        <tr><td><span class="dot dot-green"></span>0.80 – 1.20</td><td>Excellent variance matching</td><td>—</td></tr>
+        <tr><td><span class="dot dot-yellow"></span>0.50 – 0.80 or 1.20 – 1.60</td><td>Moderate mode collapse or over-dispersion</td><td>Review diversity / temperature settings</td></tr>
+        <tr><td><span class="dot dot-red"></span>&lt; 0.50 or &gt; 1.60</td><td>Severe collapse or instability</td><td>Retrain; check diffusion scheduler settings</td></tr>
+      </table>
+      <p><strong>Std-ratio drift</strong> (|σ_synth/σ_real − 1|) is just the absolute deviation from perfect (1.0) — closer to 0 is better.</p>
+    </div>
+  </details>
+
+  <!-- 4. NN Distance -->
+  <details class="explainer">
+    <summary>NN Distance — Are generated samples realistic? Can they "fit in" with real data?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> For each generated sample, we find its <em>nearest
+        neighbour</em> (most similar sample) in the real validation bank — but in the
+        multi-dimensional <em>metric space</em> (not pixel space). A low mean distance means
+        generated samples are close to real ones; a high distance means they live in a different
+        region of the distribution.
+      </p>
+      <p>
+        <strong>Analogy:</strong> Imagine you generate a fake painting and show it alongside real
+        paintings in a gallery. Art critics measure how similar the fake is to the nearest real one
+        (style, colour palette, brushstroke texture). If the fake is indistinguishable, the distance
+        is near 0. If it looks alien, the distance is large.
+      </p>
+      <p>
+        <strong>Important caveat:</strong> distances are computed in a <em>standardised</em> metric
+        space (z-scored), so the scale is in standard-deviation units, not raw sensor units.
+      </p>
+      <table class="ref-table">
+        <tr><th>Range (z-score units)</th><th>Interpretation</th><th>Action</th></tr>
+        <tr><td><span class="dot dot-green"></span>0.0 – 1.0</td><td>Generated samples sit inside the real distribution</td><td>—</td></tr>
+        <tr><td><span class="dot dot-yellow"></span>1.0 – 2.0</td><td>Slight distributional gap — plausible but not identical</td><td>Check histogram tail; consider more training data</td></tr>
+        <tr><td><span class="dot dot-red"></span>&gt; 2.0</td><td>Generated samples are OOD — unrealistic</td><td>Revisit conditioning and normalisation</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <!-- 5. Diversity -->
+  <details class="explainer">
+    <summary>Diversity — Is the model creative, or does it always produce the same thing?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> Diversity is the mean pairwise distance between all
+        generated samples in metric space. If the model always produces nearly identical outputs
+        regardless of the input (called <em>mode collapse</em>), diversity will be very low.
+        Healthy diversity means the model explored the full range of valid outputs.
+      </p>
+      <p>
+        <strong>Analogy:</strong> Ask 100 students to draw a tree. Low diversity = they all draw the
+        same cartoon tree. High diversity = every tree looks different (some are pine, some are oak,
+        some are bare). For an augmentation model, you want high diversity — otherwise all your
+        generated training data looks the same and provides no extra benefit.
+      </p>
+      <table class="ref-table">
+        <tr><th>Range</th><th>Interpretation</th><th>Action</th></tr>
+        <tr><td><span class="dot dot-green"></span>&gt; 2.0</td><td>Good variety — model explores the space</td><td>—</td></tr>
+        <tr><td><span class="dot dot-yellow"></span>0.8 – 2.0</td><td>Limited variety — partial mode collapse</td><td>Increase diffusion steps or classifier-free guidance weight</td></tr>
+        <tr><td><span class="dot dot-red"></span>&lt; 0.8</td><td>Severe mode collapse — almost no variety</td><td>Retrain; check conditioning and loss weighting</td></tr>
+      </table>
+      <p><strong>Note:</strong> Diversity and NN Distance are complementary — you want high diversity AND low NN distance. A model that is diverse but unrealistic scores badly on NN Distance. A model that is realistic but repetitive scores badly on Diversity.</p>
+    </div>
+  </details>
+
+  <!-- 6. Per-activity RMSE -->
+  <details class="explainer">
+    <summary>Per-activity RMSE — Which human activities confuse the model most?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> The same RMSE as above, but broken down by
+        <em>activity</em> (e.g., walking, running, sitting). This tells us if the model performs
+        uniformly or if certain activities are harder to synthesise accurately.
+      </p>
+      <p>
+        <strong>Why it matters:</strong> In a real deployment, a model that fails on one activity
+        class could cause that class to be under-represented in augmented training data, ultimately
+        hurting downstream classifier performance for that activity.
+      </p>
+      <table class="ref-table">
+        <tr><th>Scenario</th><th>Interpretation</th></tr>
+        <tr><td>All activities cluster tightly near the overall RMSE</td><td>Model is equitable across activities — ideal</td></tr>
+        <tr><td>One activity is much higher than the rest</td><td>That activity has unusual sensor patterns the model hasn't learned well</td></tr>
+        <tr><td>Overall RMSE is low but one bar is very tall</td><td>Consider activity-specific fine-tuning or more data for that class</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <!-- 7. Sensor metrics -->
+  <details class="explainer">
+    <summary>The 5 Sensor Metrics — What the model tries to control</summary>
+    <div class="explainer-body">
+      <p>
+        The model does not generate raw sensor values directly — it operates in
+        <em>spectrogram space</em> (a 2-D frequency-vs-time image of the sensor signal). To
+        condition the model, five compact numerical features are extracted from each spectrogram
+        using a learned extractor network. These five features are what the MAE and RMSE computations
+        operate on:
+      </p>
+      <div class="metric-cards">
+        <div class="metric-card">
+          <div class="metric-card-header">Mean Energy</div>
+          <div class="metric-card-body">
+            <p>The overall "loudness" or intensity of the sensor signal. A running person has higher accelerometer energy than a sitting person.</p>
+            <p><strong>Good MAE:</strong> &lt; 0.05 | <strong>Concerning:</strong> &gt; 0.15</p>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-header">Spectral Centroid</div>
+          <div class="metric-card-body">
+            <p>The "centre of gravity" of the frequency content — where most of the signal energy sits on the frequency axis. High centroid = fast oscillations dominate.</p>
+            <p><strong>Good MAE:</strong> &lt; 0.05 | <strong>Concerning:</strong> &gt; 0.15</p>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-header">Spectral Flux</div>
+          <div class="metric-card-body">
+            <p>How rapidly the frequency content changes over time. Walking has periodic flux; random noise has high irregular flux.</p>
+            <p><strong>Good MAE:</strong> &lt; 0.05 | <strong>Concerning:</strong> &gt; 0.15</p>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-header">Temporal Entropy</div>
+          <div class="metric-card-body">
+            <p>A measure of signal unpredictability across time. Low entropy = repetitive, regular motion (e.g., cycling at constant speed). High entropy = irregular, noisy signal.</p>
+            <p><strong>Good MAE:</strong> &lt; 0.05 | <strong>Concerning:</strong> &gt; 0.15</p>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-header">Crest Factor</div>
+          <div class="metric-card-body">
+            <p>The ratio of peak signal value to its RMS value. Reveals whether the signal has occasional sharp spikes (high crest) or a sustained level (low crest). Useful for detecting impact events.</p>
+            <p><strong>Good MAE:</strong> &lt; 0.05 | <strong>Concerning:</strong> &gt; 0.15</p>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:1rem;font-size:0.83rem;color:var(--gray-600);">
+        All five metrics are normalised before training, so a MAE of 0.05 corresponds to 5 % of the
+        typical value range in the training data — not the raw physical unit.
+      </p>
+    </div>
+  </details>
+
+  <!-- 8. Std-ratio drift -->
+  <details class="explainer">
+    <summary>Std-Ratio Drift — How stable is the model's spread control?</summary>
+    <div class="explainer-body">
+      <p>
+        <strong>What it measures:</strong> This is simply |std-ratio − 1.0|. While std-ratio tells you
+        <em>direction</em> (over- or under-dispersed), drift tells you the <em>magnitude</em> of the
+        problem without caring about direction. A drift of 0.0 is perfect; 0.5 means the model's spread
+        is 50 % off from reality.
+      </p>
+      <table class="ref-table">
+        <tr><th>Drift Range</th><th>Interpretation</th></tr>
+        <tr><td><span class="dot dot-green"></span>0.00 – 0.15</td><td>Excellent variance control</td></tr>
+        <tr><td><span class="dot dot-yellow"></span>0.15 – 0.40</td><td>Moderate — check which metrics have high drift in the bar chart</td></tr>
+        <tr><td><span class="dot dot-red"></span>&gt; 0.40</td><td>High drift — model's spread is significantly wrong</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <!-- 9. Spectrograms -->
+  <details class="explainer">
+    <summary>Spectrograms — What does "good" look like visually?</summary>
+    <div class="explainer-body">
+      <p>
+        A <strong>spectrogram</strong> is a 2-D image where:
+      </p>
+      <ul>
+        <li><strong>X-axis</strong> = time (left to right)</li>
+        <li><strong>Y-axis</strong> = frequency (low at bottom, high at top)</li>
+        <li><strong>Colour</strong> = intensity (brighter / more yellow = stronger signal at that frequency and time)</li>
+      </ul>
+      <p>
+        In the gallery, each row shows a <em>reference</em> (real sensor recording) next to the
+        model's <em>generated</em> counterpart for the same activity.
+      </p>
+      <p><strong>What to look for:</strong></p>
+      <ul>
+        <li>Do the two images have similar brightness patterns and colour distribution?</li>
+        <li>Does the generated one have the same rough structure (e.g., periodic stripes for walking)?</li>
+        <li>Are the frequency bands in similar regions?</li>
+      </ul>
+      <p>
+        Small differences are normal and even desirable (augmentation = adding variety), but large
+        structural differences (very different frequency bands or random noise) would indicate the model
+        is not capturing the underlying activity pattern.
+      </p>
+    </div>
+  </details>
+
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SUMMARY TABLE
+════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <h2>Summary Metrics Table</h2>
+  <p style="font-size:0.85rem;color:var(--gray-600);margin-bottom:1rem;">
+    A consolidated view of all computed diagnostic values. Section headers in blue group
+    related metrics together.
+  </p>
   <div class="fig-grid">
     <div class="fig-card">
       <img src="data:image/png;base64,{b64_table}" alt="Summary Table"/>
-      <div class="fig-caption">All aggregate diagnostic metrics from the evaluation pass.</div>
+      <div class="fig-caption">All aggregate diagnostic metrics from the evaluation pass. Blue section headers separate core quality, distribution, per-metric, and per-activity sub-groups.</div>
     </div>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     SCATTER PLOT
+════════════════════════════════════════════════════════════════ -->
 <div class="section">
-  <h2>🎯 Target vs Extracted Metrics (Scatter)</h2>
+  <h2>Target vs Extracted Metrics — Scatter Plots</h2>
+  <p style="font-size:0.85rem;color:var(--gray-600);margin-bottom:1rem;">
+    Each scatter plot shows one metric (column) for one sensor modality (row). Each dot is one validation
+    sample. The target value (what we asked for) is on the X-axis; the extracted value (what the model
+    actually produced) is on the Y-axis. <strong>Perfect model = all dots on the dashed diagonal line.</strong>
+    Colour encodes activity class. Dots scattered widely off the diagonal indicate the model struggles
+    to hit targets for that metric/modality combination.
+  </p>
   <div class="fig-card">
     <img src="data:image/png;base64,{b64_scatter}" alt="Metric Scatter"/>
-    <div class="fig-caption">Each point = one val sample. Diagonal dashed line = perfect fidelity. Colour = activity class.</div>
+    <div class="fig-caption">
+      Each point = one val sample. Diagonal dashed line = perfect fidelity (extracted = target).
+      Colour = activity class. MAE per sub-plot shown in title.
+    </div>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     PER-ACTIVITY RMSE
+════════════════════════════════════════════════════════════════ -->
 <div class="section">
-  <h2>📈 Per-activity RMSE</h2>
+  <h2>Per-Activity Pair RMSE</h2>
+  <p style="font-size:0.85rem;color:var(--gray-600);margin-bottom:1rem;">
+    RMSE broken down by physical activity class. The dashed line is the overall RMSE across all
+    activities (your reference baseline). Bars <strong>above</strong> the line represent activities
+    the model handles worse than average; bars <strong>below</strong> represent ones it handles
+    better. Aim for all bars to be at roughly the same height — that means the model is equitable
+    and no single activity is being neglected.
+  </p>
   <div class="fig-card">
     <img src="data:image/png;base64,{b64_act_rmse}" alt="Per-activity RMSE"/>
-    <div class="fig-caption">Dashed horizontal line = overall pair RMSE. Lower is better.</div>
+    <div class="fig-caption">Bar height = pair RMSE for that activity. Dashed horizontal line = overall pair RMSE. Lower bars = better performance on that activity.</div>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     RADAR + STD RATIO
+════════════════════════════════════════════════════════════════ -->
 <div class="section">
-  <h2>🕸️ Metric Fidelity Radar (per activity)</h2>
+  <h2>Metric Fidelity Radar &amp; Variance Matching</h2>
+  <p style="font-size:0.85rem;color:var(--gray-600);margin-bottom:1rem;">
+    <strong>Left — Radar chart:</strong> Each spoke is one sensor metric. Each coloured ring is one
+    activity class. A value of <strong>1 (outer edge)</strong> means that activity had the
+    <em>lowest</em> MAE (best) for that metric; <strong>0 (centre)</strong> means highest MAE (worst).
+    All values are normalized across activities, so this is a relative comparison — not absolute error.
+    Aim for all rings to be large and spread evenly out to the edges.
+    <br/><br/>
+    <strong>Right — Std-ratio bars:</strong> Each bar is one sensor metric. The dashed line at 1.0 is
+    the ideal. A bar at 0.6 means the generated data is 40 % too uniform; a bar at 1.4 means it is
+    40 % too noisy. The closer each bar is to 1.0, the better the model replicates the real world's
+    variety for that metric.
+  </p>
   <div class="fig-grid">
     <div class="fig-card">
       <img src="data:image/png;base64,{b64_radar}" alt="Radar Chart"/>
-      <div class="fig-caption">1 = lowest MAE (best), all values normalized across activities per metric.</div>
+      <div class="fig-caption">Per-activity metric fidelity (1 = lowest MAE / best, normalised across activities). Outer edge = best; centre = worst.</div>
     </div>
     <div class="fig-card">
       <img src="data:image/png;base64,{b64_std}" alt="Std Ratio"/>
-      <div class="fig-caption">Per-metric standard deviation ratio (σ_synth / σ_real). An ideal generator matches 1.0 per metric.</div>
+      <div class="fig-caption">Per-metric standard deviation ratio (σ_synth / σ_real). Dashed line at 1.0 = perfect variance match. &lt;1 means model is too uniform; &gt;1 means too noisy.</div>
     </div>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     NN DISTANCE HISTOGRAM
+════════════════════════════════════════════════════════════════ -->
 <div class="section">
-  <h2>📉 Nearest-Neighbour Distance Histogram</h2>
+  <h2>Nearest-Neighbour Distance — Are Generated Samples "Real Enough"?</h2>
+  <p style="font-size:0.85rem;color:var(--gray-600);margin-bottom:1rem;">
+    This histogram answers: <em>"How close is each generated sample to the real data it is
+    supposed to resemble?"</em> Each generated sample is projected into a multi-dimensional
+    metric space (the 5 sensor features × number of modalities, z-scored). We then find its
+    nearest real validation neighbour with the same activity label, and measure the Euclidean
+    distance between them.
+    <br><br>
+    <strong>Left spike = very realistic samples.</strong> A long right tail = some generated
+    samples are "out in the wilderness" far from any real example. The red dashed line is the
+    mean — ideally below 1.0 in z-score units.
+  </p>
   <div class="fig-card">
-    <img src="data:image/png;base64,{b64_nn}" alt="NN Distance"/>
-    <div class="fig-caption">Lower distances = generated samples are closer to real val data in metric space.</div>
+    <img src="data:image/png;base64,{b64_nn}" alt="NN Distance Histogram"/>
+    <div class="fig-caption">Distribution of nearest-neighbour distances (synthetic → real val bank) in standardised metric space. Red dashed line = mean. Bars concentrated near 0 = realistic generation.</div>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     SPECTROGRAM GALLERY
+════════════════════════════════════════════════════════════════ -->
 <div class="section">
-  <h2>🎨 Spectrogram Gallery</h2>
+  <h2>Spectrogram Gallery — Real vs Generated, Side by Side</h2>
+  <p style="font-size:0.85rem;color:var(--gray-600);margin-bottom:1rem;">
+    A random selection of validation pairs. Each row shows one sample. For each row:
+    the <strong>left image</strong> is the real sensor recording (spectrogram); the
+    <strong>right image</strong> is what the model generated for the same activity and
+    metric targets. The small text annotations list the 5 sensor metric values.
+    <br><br>
+    Different sensor modalities are shown as separate column pairs (e.g., accelerometer X/Y/Z,
+    gyroscope, etc.). The colour scale (viridis) is the same for both images in each pair —
+    so you can directly compare brightness and structure. Good generation will show similar
+    texture, brightness distribution, and frequency band structure to the reference.
+  </p>
   <div class="fig-card">
     <img src="data:image/png;base64,{b64_gallery}" alt="Spectrogram Gallery"/>
-    <div class="fig-caption">Randomly sampled val pairs: reference (real) vs generated. Metric annotations shown.</div>
+    <div class="fig-caption">
+      Randomly sampled val pairs: reference (real) spectrogram vs model-generated spectrogram.
+      Activity label shown in reference title. Metric annotations (target &amp; extracted values) annotated beside each image.
+    </div>
   </div>
 </div>
 
 </main>
-<footer>Generated by CGDAP run_eval_report.py &bull; {timestamp}</footer>
+<footer>
+  Generated by CGDAP <code>run_eval_report.py</code> &bull; {timestamp}
+  &bull; <em>CGDAP — Conditioned Generative Data Augmentation Pipeline</em>
+</footer>
 </body>
 </html>
 """
+
+
+def _kpi_status(value: float, thresholds_good_ok: tuple[float, float], low_is_good: bool = True) -> tuple[str, str]:
+    """Return (css_class, label) for a KPI value.
+
+    thresholds_good_ok: (good_boundary, ok_boundary)
+      - low_is_good=True  → value < good_boundary = good, < ok_boundary = ok, else bad
+      - low_is_good=False → value > good_boundary = good, > ok_boundary = ok, else bad
+    """
+    good_t, ok_t = thresholds_good_ok
+    if low_is_good:
+        if value <= good_t:
+            return "status-good", "Excellent"
+        elif value <= ok_t:
+            return "status-ok", "Acceptable"
+        else:
+            return "status-bad", "Needs work"
+    else:
+        if value >= good_t:
+            return "status-good", "Excellent"
+        elif value >= ok_t:
+            return "status-ok", "Borderline"
+        else:
+            return "status-bad", "Needs work"
 
 
 def build_html_report(
@@ -779,19 +1313,42 @@ def build_html_report(
     aug_mode: str,
     timestamp: str,
 ) -> str:
+    # ── Compute per-KPI status badges ──────────────────────────────
+    pair_rmse_val  = agg["pair_rmse"]
+    mae_val        = agg["metric_mae"]
+    std_ratio_val  = agg["std_ratio_mean"]
+    nn_dist_val    = agg["nn_distance_mean"]
+    diversity_val  = agg["diversity_mean"]
+    worst_rmse_val = agg["worst_activity_rmse"]
+
+    pr_cls, pr_lbl   = _kpi_status(pair_rmse_val,  (0.05, 0.15),  low_is_good=True)
+    mae_cls, mae_lbl = _kpi_status(mae_val,         (0.04, 0.12),  low_is_good=True)
+    nn_cls, nn_lbl   = _kpi_status(nn_dist_val,     (1.0, 2.0),    low_is_good=True)
+    wr_cls, wr_lbl   = _kpi_status(worst_rmse_val,  (0.05, 0.20),  low_is_good=True)
+    div_cls, div_lbl = _kpi_status(diversity_val,   (2.0, 0.8),    low_is_good=False)
+
+    # Std-ratio: closest to 1.0 is best → convert to drift distance
+    std_drift = abs(std_ratio_val - 1.0)
+    sr_cls, sr_lbl = _kpi_status(std_drift, (0.20, 0.40), low_is_good=True)
+
     return HTML_TEMPLATE.format(
         experiment=experiment,
         checkpoint=pathlib.Path(checkpoint).name,
         timestamp=timestamp,
         n_val=n_val,
         aug_mode=aug_mode,
-        pair_rmse=f"{agg['pair_rmse']:.4f}",
-        metric_mae=f"{agg['metric_mae']:.4f}",
-        std_ratio=f"{agg['std_ratio_mean']:.4f}",
-        nn_dist=f"{agg['nn_distance_mean']:.4f}",
-        diversity=f"{agg['diversity_mean']:.4f}",
-        worst_rmse=f"{agg['worst_activity_rmse']:.4f}",
-        accent="#2b6cb0",
+        pair_rmse=f"{pair_rmse_val:.4f}",
+        metric_mae=f"{mae_val:.4f}",
+        std_ratio=f"{std_ratio_val:.4f}",
+        nn_dist=f"{nn_dist_val:.4f}",
+        diversity=f"{diversity_val:.4f}",
+        worst_rmse=f"{worst_rmse_val:.4f}",
+        pair_rmse_status=pr_cls,  pair_rmse_label=pr_lbl,
+        metric_mae_status=mae_cls, metric_mae_label=mae_lbl,
+        std_ratio_status=sr_cls,  std_ratio_label=sr_lbl,
+        nn_dist_status=nn_cls,    nn_dist_label=nn_lbl,
+        diversity_status=div_cls, diversity_label=div_lbl,
+        worst_rmse_status=wr_cls, worst_rmse_label=wr_lbl,
         **b64_figures,
     )
 
@@ -941,8 +1498,8 @@ def main(cfg: DictConfig) -> None:
     for act, rmse in sorted(agg["per_activity_rmse"].items()):
         print(f"  {act:<20} RMSE={rmse:.4f}")
     print("=" * 65)
-    print(f"\n  📄 HTML report  → {report_path.resolve()}")
-    print(f"  🖼  Figures dir  → {fig_dir.resolve()}")
+    print(f"\n  HTML report  -> {report_path.resolve()}")
+    print(f"  Figures dir  -> {fig_dir.resolve()}")
     print()
 
 

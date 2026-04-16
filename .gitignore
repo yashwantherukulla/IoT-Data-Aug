@@ -17,3 +17,4 @@ generate_code
 outputs
 .env
 codebase_audit_report.md
+pyrightconfig.json

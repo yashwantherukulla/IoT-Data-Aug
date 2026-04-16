@@ -69,7 +69,7 @@ def _save_figure(fig: plt.Figure, path: pathlib.Path) -> str:
     """Save figure to disk and return its base64 encoding."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=FIG_DPI, bbox_inches="tight")
-    log.info("Saved figure → %s", path)
+    log.info("Saved figure -> %s", path)
     return _fig_to_b64(fig)
 
 
@@ -806,6 +806,14 @@ def main(cfg: DictConfig) -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # Fix UnicodeEncodeError on Windows (CP1252 can't encode → U+2192)
+    import sys
+    for handler in logging.root.handlers:
+        if hasattr(handler, "stream") and hasattr(handler.stream, "reconfigure"):
+            try:
+                handler.stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
 
     random.seed(int(cfg.seed))
     torch.manual_seed(int(cfg.seed))
@@ -910,7 +918,7 @@ def main(cfg: DictConfig) -> None:
     )
     report_path = out_root / "report.html"
     report_path.write_text(html, encoding="utf-8")
-    log.info("Report written → %s", report_path)
+    log.info("Report written -> %s", report_path)
 
     # ── Print final summary ──────────────────────────────────────────
     print("\n" + "=" * 65)

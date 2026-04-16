@@ -23,6 +23,18 @@ augmentation:
   num_steps: null
   seed: ${seed}
 
+product_eval:
+  enabled: true
+  every_n_epochs: 1
+  split: val
+  samples_per_activity: 8
+  samples_per_probe: 1
+  seed: ${seed}
+  num_steps: null
+  z_score_threshold: 2.0
+  log_histograms: true
+  log_scatters: true
+
 deepsense:
   conv_channels: 64
   n_conv_layers: 3

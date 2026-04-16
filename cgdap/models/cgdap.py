@@ -256,6 +256,8 @@ class MultimodalCGDAP(nn.Module):
 
         accum_l_g = torch.zeros(1, device=device)
         accum_metric_losses = torch.zeros(self.n_metrics, device=device)
+        per_modality_l_g: dict[str, torch.Tensor] = {}
+        per_modality_metric_losses: dict[str, torch.Tensor] = {}
 
         for mod in self.modalities:
             mod_data = batch[mod]
@@ -281,10 +283,15 @@ class MultimodalCGDAP(nn.Module):
             # Metric consistency loss via x0_hat
             x0_hat = self.schedule.predict_x0(x_t, t, pred_noise)
             extracted = self.metric_extractor(x0_hat)    # [B, 5]
+            mod_metric_losses = torch.zeros(self.n_metrics, device=device)
 
             for i in range(self.n_metrics):
                 l_m_i = F.mse_loss(extracted[:, i], metrics_target[:, i])
                 accum_metric_losses[i] = accum_metric_losses[i] + l_m_i
+                mod_metric_losses[i] = l_m_i
+
+            per_modality_l_g[mod] = l_g
+            per_modality_metric_losses[mod] = mod_metric_losses
 
         # Average over modalities
         n_mod = len(self.modalities)
@@ -305,6 +312,12 @@ class MultimodalCGDAP(nn.Module):
         }
         for i, name in enumerate(MetricExtractor.METRIC_NAMES):
             loss_dict[f"L_metric_{name}"] = metric_losses_avg[i]
+            loss_dict[f"metric_weight_{name}"] = self.metric_weights[i]
+        for modality, l_g_modality in per_modality_l_g.items():
+            loss_dict[f"L_G_{modality}"] = l_g_modality
+        for modality, modality_metric_losses in per_modality_metric_losses.items():
+            for i, name in enumerate(MetricExtractor.METRIC_NAMES):
+                loss_dict[f"L_metric_{modality}_{name}"] = modality_metric_losses[i]
 
         return loss_dict
 

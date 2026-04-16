@@ -13,6 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from cgdap.data.dataset import build_label_map, make_paired_loader
+from cgdap.evaluation.product_eval import ProductEvaluator
 from cgdap.models.cgdap import MultimodalCGDAP
 
 try:
@@ -87,6 +88,7 @@ class ExperimentLogger:
         wandb.define_metric("train_step/*", step_metric="train_step/global_step")
         wandb.define_metric("train_epoch/*", step_metric="epoch")
         wandb.define_metric("val_epoch/*", step_metric="epoch")
+        wandb.define_metric("product_eval/*", step_metric="epoch")
 
     @property
     def enabled(self) -> bool:
@@ -98,7 +100,7 @@ class ExperimentLogger:
             return None
         return getattr(self.run, "id", None)
 
-    def log(self, metrics: dict[str, float], *, step: int | None = None) -> None:
+    def log(self, metrics: dict[str, Any], *, step: int | None = None) -> None:
         if not self.enabled:
             return
         import wandb
@@ -147,6 +149,18 @@ def build_scheduler(optimizer: optim.Optimizer, cfg: DictConfig):
     if name == "none":
         return None
     raise ValueError(f"Unknown scheduler: {name!r}")
+
+
+def compute_grad_norm(parameters: Any) -> float:
+    """Compute the total L2 grad norm before clipping."""
+    grads = [
+        p.grad.detach().norm(2)
+        for p in parameters
+        if getattr(p, "grad", None) is not None
+    ]
+    if not grads:
+        return 0.0
+    return float(torch.norm(torch.stack(grads), 2).item())
 
 
 class CGDAPTrainer:
@@ -223,6 +237,13 @@ class CGDAPTrainer:
             self._load_resume_checkpoint(cfg.training.get("resume_checkpoint"))
 
         self.experiment_logger = ExperimentLogger(cfg, resume_run_id=self.resume_wandb_run_id)
+        product_eval_cfg = cfg.evaluation.product_eval
+        self.product_eval_every = int(product_eval_cfg.every_n_epochs)
+        self.product_evaluator = (
+            ProductEvaluator(cfg, label_map=self.label_map, device=self.device)
+            if bool(product_eval_cfg.enabled)
+            else None
+        )
 
     def _resolve_resume_checkpoint(self, resume_checkpoint: str | None) -> pathlib.Path:
         if resume_checkpoint:
@@ -309,6 +330,7 @@ class CGDAPTrainer:
             self.optimizer.zero_grad()
             loss_dict = self.model(batch, n_classes=self.n_classes)
             loss_dict["L_total"].backward()
+            grad_norm_preclip = compute_grad_norm(self.model.parameters())
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
 
@@ -324,17 +346,23 @@ class CGDAPTrainer:
                 lr=f"{lr:.2e}",
             )
 
-            self.experiment_logger.log(
+            step_metrics = {
+                "epoch": epoch,
+                "train_step/global_step": self.global_step,
+                "train_step/lr": lr,
+                "train_step/grad_norm_preclip": grad_norm_preclip,
+            }
+            step_metrics.update(
                 {
-                    "epoch": epoch,
-                    "train_step/global_step": self.global_step,
-                    "train_step/L_total": loss_dict["L_total"].item(),
-                    "train_step/L_G": loss_dict["L_G"].item(),
-                    "train_step/L_metric": loss_dict["L_metric"].item(),
-                    "train_step/lr": lr,
-                },
-                step=self.global_step,
+                    f"train_step/{key}": float(value.item())
+                    for key, value in loss_dict.items()
+                }
             )
+            if abs(loss_dict["L_G"].item()) > 1.0e-12:
+                step_metrics["train_step/L_metric_to_L_G_ratio"] = float(
+                    loss_dict["L_metric"].item() / loss_dict["L_G"].item()
+                )
+            self.experiment_logger.log(step_metrics, step=self.global_step)
 
         if self.scheduler is not None:
             self.scheduler.step()
@@ -447,6 +475,10 @@ class CGDAPTrainer:
                 train_log = {f"train_epoch/{k}": v for k, v in train_metrics.items()}
                 train_log["epoch"] = epoch
                 train_log["train_epoch/lr"] = float(self.optimizer.param_groups[0]["lr"])
+                if abs(train_metrics["L_G"]) > 1.0e-12:
+                    train_log["train_epoch/L_metric_to_L_G_ratio"] = float(
+                        train_metrics["L_metric"] / train_metrics["L_G"]
+                    )
                 self.experiment_logger.log(train_log, step=self.global_step)
                 log.info(
                     "Epoch %d | Train L_total=%.4f L_G=%.4f L_metric=%.4f",
@@ -458,12 +490,36 @@ class CGDAPTrainer:
                     val_metrics = self.val_epoch(epoch)
                     val_log = {f"val_epoch/{k}": v for k, v in val_metrics.items()}
                     val_log["epoch"] = epoch
+                    if abs(val_metrics["L_G"]) > 1.0e-12:
+                        val_log["val_epoch/L_metric_to_L_G_ratio"] = float(
+                            val_metrics["L_metric"] / val_metrics["L_G"]
+                        )
                     self.experiment_logger.log(val_log, step=self.global_step)
                     log.info(
                         "Epoch %d | Val   L_total=%.4f L_G=%.4f L_metric=%.4f",
                         epoch, val_metrics["L_total"], val_metrics["L_G"], val_metrics["L_metric"],
                     )
                     display_metrics["val"] = f"{val_metrics['L_total']:.4f}"
+
+                if self.product_evaluator is not None and epoch % self.product_eval_every == 0:
+                    product_metrics = self.product_evaluator.evaluate(
+                        self.model,
+                        enable_artifacts=bool(
+                            self.experiment_logger.enabled and self.experiment_logger.backend == "wandb"
+                        ),
+                    )
+                    product_log = {f"product_eval/{k}": v for k, v in product_metrics.items()}
+                    product_log["epoch"] = epoch
+                    self.experiment_logger.log(product_log, step=self.global_step)
+                    log.info(
+                        "Epoch %d | ProductEval pair_rmse=%.4f nn_val=%.4f nn_train=%.4f coverage=%.4f",
+                        epoch,
+                        float(product_metrics["pair_rmse"]),
+                        float(product_metrics["nn_distance_val_mean"]),
+                        float(product_metrics["nn_distance_train_mean"]),
+                        float(product_metrics["coverage_unique_nn_ratio"]),
+                    )
+                    display_metrics["prod"] = f"{float(product_metrics['pair_rmse']):.4f}"
 
                 epoch_progress.set_postfix(display_metrics)
 

@@ -81,6 +81,11 @@ def test_cgdap_forward_backward():
     }
     loss_dict = model(batch, n_classes=5)
     assert "L_total" in loss_dict
+    assert "L_G_acc" in loss_dict
+    assert "L_G_gyr" in loss_dict
+    assert "L_metric_acc_temporal_range" in loss_dict
+    assert "L_metric_gyr_entropy" in loss_dict
+    assert "metric_weight_temporal_range" in loss_dict
     assert not torch.isnan(loss_dict["L_total"])
     loss_dict["L_total"].backward()
 

@@ -7,6 +7,7 @@ This repository contains:
 - differentiable metric extraction from spectrograms
 - a multimodal conditional diffusion model (`MultimodalCGDAP`)
 - downstream HAR classifier evaluation (DeepSense + Transformer)
+- **full validation evaluation report** with figures and a self-contained HTML report (`run_eval_report.py`)
 - tests for datasets, metrics, and core model blocks
 
 All details below were verified against the current codebase and current workspace artifacts on 2026-04-10.
@@ -29,7 +30,7 @@ Current workspace verification:
 - `data/processed/HAR/metadata.json` exists and declares `contract_version: 2.1`
 - `data/processed/HAR/train/{acc,gyr}` and `data/processed/HAR/val/{acc,gyr}` exist
 - Test suite status: `17 passed`
-- No `ckpt_epoch*.pt` checkpoints currently present under `outputs/checkpoints/`
+- Checkpoints present: `outputs/checkpoints/test_run/ckpt_epoch0000.pt` … `ckpt_epoch0039.pt` (40 epochs)
 
 ## Repository Structure
 
@@ -54,7 +55,8 @@ Current workspace verification:
 |   |-- prepare_dataset.py
 |   |-- train.py
 |   |-- generate.py
-|   `-- evaluate.py
+|   |-- evaluate.py
+|   `-- run_eval_report.py
 |-- tests/
 |-- data/
 |   |-- raw/
@@ -69,6 +71,7 @@ Current workspace verification:
 1. Preprocess raw RealWorld HAR subject archives from `data/raw/HAR` into spectrogram `.pt` samples.
 2. Train `MultimodalCGDAP` on paired modalities (`acc` + `gyr`) with conditional diffusion + metric consistency.
 3. Evaluate HAR classifiers on real-only vs real+synthetic training data.
+4. **Run the evaluation report** (`scripts/run_eval_report.py`) to generate a full diagnostic report over all val samples.
 
 The synthetic path in evaluation uses:
 - `AugmentationEngine` (target metrics)
@@ -316,7 +319,52 @@ or explicit checkpoint:
 uv run python scripts/evaluate.py evaluation.augmentation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0000.pt"
 ```
 
-### 4. Generate Standalone Synthetic Samples
+### 4. Run Evaluation Report
+
+Generates a full diagnostic report over **all val samples** (2,513 paired samples). Produces a self-contained HTML report and 7 PNG figures covering metric fidelity, NN distances, spectrogram quality, and per-activity breakdowns.
+
+```bash
+# Default — auto-picks latest checkpoint for the configured experiment_name
+uv run python scripts/run_eval_report.py
+
+# or using the venv Python directly
+.venv\Scripts\python.exe scripts/run_eval_report.py
+```
+
+With an explicit checkpoint:
+
+```bash
+.venv\Scripts\python.exe scripts/run_eval_report.py \
+  evaluation.augmentation.checkpoint_path="outputs/checkpoints/test_run/ckpt_epoch0039.pt"
+```
+
+Fewer diffusion steps for faster runs (trades some quality):
+
+```bash
+.venv\Scripts\python.exe scripts/run_eval_report.py evaluation.product_eval.num_steps=25
+```
+
+Outputs written to `outputs/eval_report/<experiment_name>/<timestamp>/`:
+
+| File | Content |
+|---|---|
+| `report.html` | Self-contained report with all figures embedded |
+| `figures/01_summary_table.png` | All aggregate diagnostic metrics |
+| `figures/02_metric_scatter.png` | Target vs extracted scatter (per metric × modality) |
+| `figures/03_nn_distance_hist.png` | NN distance histogram (synth → val real bank) |
+| `figures/04_radar_chart.png` | Per-activity metric fidelity radar chart |
+| `figures/05_std_ratio_bars.png` | σ_synth / σ_real per metric (ideal = 1.0) |
+| `figures/06_spectrogram_gallery.png` | Reference vs generated spectrogram pairs |
+| `figures/07_per_activity_rmse.png` | Per-activity pair RMSE bar chart |
+
+Key metrics reported:
+- **Pair RMSE** — target vs extracted metric MSE (lower = better fidelity)
+- **NN Distance** — synthetic samples' distance to real val bank in metric space
+- **Std-ratio** — σ_synth / σ_val per metric (1.0 = perfect variance matching)
+- **Diversity** — mean pairwise distance among generated samples
+- **Per-activity RMSE** — identifies which activities the model struggles with most
+
+### 6. Generate Standalone Synthetic Samples
 
 Demo generation from one processed sample:
 
@@ -335,7 +383,7 @@ Outputs:
 - paired demo bundles under `outputs/generated/<experiment_name>/paired/<activity>/`
 - `.png` preview plots saved next to each generated `.pt` plus a paired comparison image
 
-### 5. Run Tests
+### 7. Run Tests
 
 ```bash
 uv run pytest tests -v
@@ -407,5 +455,7 @@ Main entry points:
 - `scripts/prepare_dataset.py`
 - `scripts/train.py`
 - `scripts/evaluate.py`
+- `scripts/run_eval_report.py`
+- `scripts/generate.py`
 
 Quick project summary command docs are also in `main.py`.

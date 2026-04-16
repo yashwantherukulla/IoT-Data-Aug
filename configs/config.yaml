@@ -49,7 +49,7 @@ generation:
   dataset_split: null
   activity: null
   num_samples: 4
-  num_steps: null
+  num_steps: 1000
   seed: ${seed}
   sample_prefix: "demo"
   match_reference_label: true

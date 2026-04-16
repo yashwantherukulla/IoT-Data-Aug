@@ -236,6 +236,7 @@ class CGDAPTrainer:
         ckpt_dir = pathlib.Path(cfg.training.checkpoint_dir) / cfg.experiment_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.ckpt_dir = ckpt_dir
+        self.best_val_loss = self._load_best_val_loss()
         self.start_epoch = 0
 
         if bool(cfg.training.get("resume", False)):
@@ -265,12 +266,28 @@ class CGDAPTrainer:
                 "Disable training.resume or provide training.resume_checkpoint."
             )
 
+        latest_path = candidate / "latest.pt"
+        if latest_path.exists():
+            return latest_path
+
         checkpoints = sorted(candidate.glob("ckpt_epoch*.pt"))
         if not checkpoints:
             raise FileNotFoundError(
                 f"No checkpoints matching ckpt_epoch*.pt found under {candidate}."
             )
         return checkpoints[-1]
+
+    def _load_best_val_loss(self) -> float | None:
+        best_path = self.ckpt_dir / "best.pt"
+        if not best_path.exists():
+            return None
+
+        payload = torch.load(best_path, map_location="cpu")
+        metrics = payload.get("metrics", {})
+        raw_value = metrics.get("val/L_total")
+        if raw_value is None:
+            return None
+        return float(raw_value)
 
     def _load_resume_checkpoint(self, resume_checkpoint: str | None) -> None:
         checkpoint_path = self._resolve_resume_checkpoint(resume_checkpoint)
@@ -434,11 +451,16 @@ class CGDAPTrainer:
             raise RuntimeError("Validation loader produced zero batches.")
         return {k: v / steps for k, v in totals.items()}
 
-    def save_checkpoint(self, epoch: int, metrics: dict[str, float]) -> None:
-        path = self.ckpt_dir / f"ckpt_epoch{epoch:04d}.pt"
+    def _save_checkpoint_file(
+        self,
+        path: pathlib.Path,
+        epoch: int,
+        metrics: dict[str, float],
+    ) -> None:
         torch.save(
             {
                 "epoch": epoch,
+                "epoch_1based": epoch + 1,
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler is not None else None,
@@ -452,6 +474,16 @@ class CGDAPTrainer:
             path,
         )
         log.info("Checkpoint saved: %s", path)
+
+    def save_checkpoint(self, epoch: int, metrics: dict[str, float]) -> None:
+        path = self.ckpt_dir / f"ckpt_epoch{epoch:04d}.pt"
+        self._save_checkpoint_file(path, epoch, metrics)
+
+    def save_latest_checkpoint(self, epoch: int, metrics: dict[str, float]) -> None:
+        self._save_checkpoint_file(self.ckpt_dir / "latest.pt", epoch, metrics)
+
+    def save_best_checkpoint(self, epoch: int, metrics: dict[str, float]) -> None:
+        self._save_checkpoint_file(self.ckpt_dir / "best.pt", epoch, metrics)
 
     def run(self) -> None:
         log.info("=" * 60)
@@ -471,6 +503,7 @@ class CGDAPTrainer:
         try:
             for epoch in epoch_progress:
                 train_metrics = self.train_epoch(epoch)
+                val_metrics: dict[str, float] | None = None
                 train_log = {f"train_epoch/{k}": v for k, v in train_metrics.items()}
                 train_log["epoch"] = epoch
                 train_log["train_epoch/lr"] = float(self.optimizer.param_groups[0]["lr"])
@@ -522,8 +555,20 @@ class CGDAPTrainer:
 
                 epoch_progress.set_postfix(display_metrics)
 
+                checkpoint_metrics = {f"train/{k}": v for k, v in train_metrics.items()}
+                if val_metrics is not None:
+                    checkpoint_metrics.update({f"val/{k}": v for k, v in val_metrics.items()})
+
+                self.save_latest_checkpoint(epoch, checkpoint_metrics)
+
+                if val_metrics is not None:
+                    current_val_loss = float(val_metrics["L_total"])
+                    if self.best_val_loss is None or current_val_loss < self.best_val_loss:
+                        self.best_val_loss = current_val_loss
+                        self.save_best_checkpoint(epoch, checkpoint_metrics)
+
                 if epoch % self.save_every == 0 or epoch == self.max_epochs - 1:
-                    self.save_checkpoint(epoch, train_metrics)
+                    self.save_checkpoint(epoch, checkpoint_metrics)
         finally:
             self.experiment_logger.finish()
 

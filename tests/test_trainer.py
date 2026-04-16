@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pytest
 import torch
 from omegaconf import OmegaConf
 
@@ -265,6 +266,74 @@ def test_trainer_uses_configured_clip_norm_and_zero_grad_set_to_none():
         assert zero_grad_calls
         assert all(zero_grad_calls)
         assert clip_norm_calls == [0.25, 0.25]
+    finally:
+        if root.exists():
+            shutil.rmtree(root)
+
+
+def test_resolve_resume_checkpoint_prefers_latest_checkpoint():
+    root = Path("tmp_trainer_resume_latest")
+    if root.exists():
+        shutil.rmtree(root)
+    try:
+        processed_root = _build_processed_root(root)
+        cfg = _build_cfg(processed_root, root)
+        trainer = CGDAPTrainer(cfg)
+
+        trainer.save_checkpoint(0, {"train/L_total": 1.0})
+        trainer.save_latest_checkpoint(1, {"train/L_total": 0.8, "val/L_total": 0.7})
+
+        resolved = trainer._resolve_resume_checkpoint(None)
+
+        assert resolved == trainer.ckpt_dir / "latest.pt"
+    finally:
+        if root.exists():
+            shutil.rmtree(root)
+
+
+def test_trainer_saves_latest_and_best_checkpoints_from_val_loss():
+    root = Path("tmp_trainer_best_checkpoint")
+    if root.exists():
+        shutil.rmtree(root)
+    try:
+        processed_root = _build_processed_root(root)
+        cfg = _build_cfg(processed_root, root)
+        cfg.training.max_epochs = 3
+        cfg.training.save_every_n_epochs = 100
+        cfg.training.val_every_n_epochs = 1
+        cfg.evaluation.product_eval.enabled = False
+        trainer = CGDAPTrainer(cfg)
+
+        train_history = [
+            {"L_total": 1.0, "L_G": 0.5, "L_metric": 0.25},
+            {"L_total": 0.9, "L_G": 0.45, "L_metric": 0.2},
+            {"L_total": 0.85, "L_G": 0.4, "L_metric": 0.18},
+        ]
+        val_history = [
+            {"L_total": 0.8, "L_G": 0.4, "L_metric": 0.16},
+            {"L_total": 0.6, "L_G": 0.3, "L_metric": 0.12},
+            {"L_total": 0.7, "L_G": 0.35, "L_metric": 0.14},
+        ]
+
+        trainer.train_epoch = lambda epoch: train_history[epoch]
+        trainer.val_epoch = lambda epoch: val_history[epoch]
+        trainer.experiment_logger.log = lambda payload, step=None: None
+        trainer.experiment_logger.finish = lambda: None
+
+        trainer.run()
+
+        latest_payload = torch.load(trainer.ckpt_dir / "latest.pt", map_location="cpu")
+        best_payload = torch.load(trainer.ckpt_dir / "best.pt", map_location="cpu")
+
+        assert latest_payload["epoch"] == 2
+        assert latest_payload["epoch_1based"] == 3
+        assert latest_payload["metrics"]["val/L_total"] == pytest.approx(0.7)
+
+        assert best_payload["epoch"] == 1
+        assert best_payload["epoch_1based"] == 2
+        assert best_payload["metrics"]["val/L_total"] == pytest.approx(0.6)
+        assert (trainer.ckpt_dir / "ckpt_epoch0002.pt").exists()
+        assert trainer.best_val_loss == pytest.approx(0.6)
     finally:
         if root.exists():
             shutil.rmtree(root)

@@ -56,14 +56,6 @@ def _safe_std_ratio(numerator: torch.Tensor, denominator: torch.Tensor) -> torch
     return numerator / denominator.clamp_min(1.0e-6)
 
 
-def _pair_metric_names(modalities: list[str]) -> list[str]:
-    names: list[str] = []
-    for modality in modalities:
-        for metric_name in MetricExtractor.METRIC_NAMES:
-            names.append(f"{modality}_{metric_name}")
-    return names
-
-
 def _concat_pair_metrics(sample: dict[str, Any], modalities: list[str]) -> torch.Tensor:
     return torch.cat([sample[mod]["metrics"].float() for mod in modalities], dim=0)
 
@@ -83,8 +75,6 @@ class ProductEvaluator:
         self.modalities = list(cfg.dataset.modalities)
         self.label_map = dict(label_map)
         self.label_to_activity = {label: activity for activity, label in self.label_map.items()}
-        self.metric_names = list(MetricExtractor.METRIC_NAMES)
-        self.pair_metric_names = _pair_metric_names(self.modalities)
 
         self.eval_cfg = cfg.evaluation.product_eval
         self.split = str(self.eval_cfg.split)
@@ -224,10 +214,7 @@ class ProductEvaluator:
     def _build_wandb_payload(
         self,
         *,
-        activities: list[str],
-        target_by_modality: dict[str, torch.Tensor],
-        generated_by_modality: dict[str, torch.Tensor],
-        error_by_modality: dict[str, torch.Tensor],
+        pair_error: torch.Tensor,
         val_nn_distances: torch.Tensor,
         train_nn_distances: torch.Tensor,
     ) -> dict[str, Any]:
@@ -241,26 +228,7 @@ class ProductEvaluator:
         if bool(self.eval_cfg.log_histograms):
             payload["hist/nn_distance_val"] = wandb.Histogram(val_nn_distances.numpy())
             payload["hist/nn_distance_train"] = wandb.Histogram(train_nn_distances.numpy())
-            for modality in self.modalities:
-                for metric_idx, metric_name in enumerate(self.metric_names):
-                    payload[f"hist/error_{modality}_{metric_name}"] = wandb.Histogram(
-                        error_by_modality[modality][:, metric_idx].numpy()
-                    )
-
-        if bool(self.eval_cfg.log_scatters):
-            for modality in self.modalities:
-                for metric_idx, metric_name in enumerate(self.metric_names):
-                    table = wandb.Table(columns=["target", "generated", "activity"])
-                    targets = target_by_modality[modality][:, metric_idx].tolist()
-                    generated = generated_by_modality[modality][:, metric_idx].tolist()
-                    for target_value, generated_value, activity in zip(targets, generated, activities, strict=False):
-                        table.add_data(float(target_value), float(generated_value), str(activity))
-                    payload[f"scatter/{modality}_{metric_name}"] = wandb.plot.scatter(
-                        table,
-                        "target",
-                        "generated",
-                        title=f"{modality} {metric_name}: target vs generated",
-                    )
+            payload["hist/pair_error"] = wandb.Histogram(pair_error.reshape(-1).numpy())
 
         return payload
 
@@ -277,12 +245,9 @@ class ProductEvaluator:
         was_training = bool(model.training)
         model.eval()
 
-        target_by_modality: dict[str, list[torch.Tensor]] = {modality: [] for modality in self.modalities}
-        generated_by_modality: dict[str, list[torch.Tensor]] = {modality: [] for modality in self.modalities}
         pair_targets: list[torch.Tensor] = []
         pair_generated: list[torch.Tensor] = []
         synth_labels: list[int] = []
-        synth_activities: list[str] = []
 
         for sample_idx, probe_sample in enumerate(self.probe_samples):
             for repeat_idx in range(self.samples_per_probe):
@@ -309,32 +274,16 @@ class ProductEvaluator:
                 for modality in self.modalities:
                     generated_metrics = model.metric_extractor(generated[modality]).squeeze(0).detach().cpu().float()
                     target_metrics = targets[modality].detach().cpu().float()
-                    target_by_modality[modality].append(target_metrics)
-                    generated_by_modality[modality].append(generated_metrics)
                     target_parts.append(target_metrics)
                     generated_parts.append(generated_metrics)
 
                 pair_targets.append(torch.cat(target_parts, dim=0))
                 pair_generated.append(torch.cat(generated_parts, dim=0))
                 synth_labels.append(label)
-                synth_activities.append(activity)
 
         target_pairs = torch.stack(pair_targets).float()
         generated_pairs = torch.stack(pair_generated).float()
         labels_tensor = torch.tensor(synth_labels, dtype=torch.long)
-
-        target_by_modality_tensor = {
-            modality: torch.stack(values).float()
-            for modality, values in target_by_modality.items()
-        }
-        generated_by_modality_tensor = {
-            modality: torch.stack(values).float()
-            for modality, values in generated_by_modality.items()
-        }
-        error_by_modality = {
-            modality: generated_by_modality_tensor[modality] - target_by_modality_tensor[modality]
-            for modality in self.modalities
-        }
 
         split_bank = self.real_banks[self.split]
         train_bank = self.real_banks["train"]
@@ -380,46 +329,29 @@ class ProductEvaluator:
         pair_error = generated_pairs - target_pairs
         synth_std = generated_pairs.std(dim=0, unbiased=False)
         val_std_ratio = _safe_std_ratio(synth_std, split_bank["std"])
+        mean_abs_error = float(pair_error.abs().mean().item())
+        std_ratio_mean = float(val_std_ratio.mean().item())
+        std_ratio_drift_mean = float((val_std_ratio - 1.0).abs().mean().item())
+        worst_activity_pair_rmse = max(activity_pair_rmse.values()) if activity_pair_rmse else 0.0
 
         metrics: dict[str, Any] = {
             "pair_rmse": float(torch.sqrt(torch.mean(pair_error ** 2)).item()),
+            "metric_mae_mean": mean_abs_error,
             "nn_distance_val_mean": float(val_nn_distances.mean().item()),
-            "nn_distance_train_mean": float(train_nn_distances.mean().item()),
             "nn_distance_gap_val_minus_train": float((val_nn_distances.mean() - train_nn_distances.mean()).item()),
             "centroid_drift_mean": sum(centroid_drifts) / max(len(centroid_drifts), 1),
-            "within_band_rate": float(within_band_mask.float().mean().item()),
             "within_band_vector_rate": float(within_band_mask.all(dim=1).float().mean().item()),
             "diversity_pairwise_distance_mean": diversity_mean,
+            "std_ratio_mean": std_ratio_mean,
+            "std_ratio_drift_mean": std_ratio_drift_mean,
             "coverage_unique_nn_ratio": float(torch.unique(val_nn_indices).numel() / max(len(split_bank["pairs"]), 1)),
+            "worst_activity_pair_rmse": float(worst_activity_pair_rmse),
         }
-
-        for activity in sorted(set(synth_activities)):
-            count = sum(1 for value in synth_activities if value == activity)
-            metrics[f"activity/{activity}_count"] = float(count)
-            metrics[f"activity/{activity}_pair_rmse"] = float(activity_pair_rmse[activity])
-
-        for metric_idx, pair_metric_name in enumerate(self.pair_metric_names):
-            metrics[f"std_ratio/{pair_metric_name}"] = float(val_std_ratio[metric_idx].item())
-
-        for modality in self.modalities:
-            target_tensor = target_by_modality_tensor[modality]
-            generated_tensor = generated_by_modality_tensor[modality]
-            error_tensor = error_by_modality[modality]
-            for metric_idx, metric_name in enumerate(self.metric_names):
-                metric_error = error_tensor[:, metric_idx]
-                metrics[f"fidelity/{modality}_{metric_name}_mae"] = float(metric_error.abs().mean().item())
-                metrics[f"fidelity/{modality}_{metric_name}_rmse"] = float(
-                    torch.sqrt(torch.mean(metric_error ** 2)).item()
-                )
-                metrics[f"fidelity/{modality}_{metric_name}_bias"] = float(metric_error.mean().item())
 
         if enable_artifacts:
             metrics.update(
                 self._build_wandb_payload(
-                    activities=synth_activities,
-                    target_by_modality=target_by_modality_tensor,
-                    generated_by_modality=generated_by_modality_tensor,
-                    error_by_modality=error_by_modality,
+                    pair_error=pair_error,
                     val_nn_distances=val_nn_distances,
                     train_nn_distances=train_nn_distances,
                 )

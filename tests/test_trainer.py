@@ -173,7 +173,7 @@ def test_trainer_runs_product_eval_each_epoch_without_checkpoint_reload():
                 return {
                     "pair_rmse": 0.25,
                     "nn_distance_val_mean": 0.3,
-                    "nn_distance_train_mean": 0.2,
+                    "nn_distance_gap_val_minus_train": 0.1,
                     "coverage_unique_nn_ratio": 0.1,
                 }
 

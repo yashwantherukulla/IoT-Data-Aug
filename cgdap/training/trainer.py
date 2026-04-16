@@ -512,11 +512,11 @@ class CGDAPTrainer:
                     product_log["epoch"] = epoch
                     self.experiment_logger.log(product_log, step=self.global_step)
                     log.info(
-                        "Epoch %d | ProductEval pair_rmse=%.4f nn_val=%.4f nn_train=%.4f coverage=%.4f",
+                        "Epoch %d | ProductEval pair_rmse=%.4f nn_val=%.4f gap=%.4f coverage=%.4f",
                         epoch,
                         float(product_metrics["pair_rmse"]),
                         float(product_metrics["nn_distance_val_mean"]),
-                        float(product_metrics["nn_distance_train_mean"]),
+                        float(product_metrics["nn_distance_gap_val_minus_train"]),
                         float(product_metrics["coverage_unique_nn_ratio"]),
                     )
                     display_metrics["prod"] = f"{float(product_metrics['pair_rmse']):.4f}"

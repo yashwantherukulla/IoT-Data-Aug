@@ -32,8 +32,8 @@ product_eval:
   seed: ${seed}
   num_steps: null
   z_score_threshold: 2.0
-  log_histograms: true
-  log_scatters: true
+  log_histograms: false
+  log_scatters: false
 
 deepsense:
   conv_channels: 64

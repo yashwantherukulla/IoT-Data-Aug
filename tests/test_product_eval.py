@@ -207,12 +207,13 @@ def test_product_evaluator_reports_expected_pair_rmse_for_disturbance():
 
         metrics = evaluator.evaluate(model)
         expected_rmse = torch.sqrt(torch.mean(torch.cat([offsets["acc"], offsets["gyr"]]) ** 2)).item()
+        expected_mae = torch.mean(torch.cat([offsets["acc"].abs(), offsets["gyr"].abs()])).item()
 
         assert metrics["pair_rmse"] == pytest.approx(expected_rmse)
-        assert metrics["activity/running_count"] == 1.0
-        assert metrics["activity/walking_count"] == 1.0
-        assert metrics["fidelity/acc_temporal_range_bias"] == pytest.approx(0.1)
-        assert metrics["fidelity/gyr_temporal_range_bias"] == pytest.approx(-0.2)
+        assert metrics["metric_mae_mean"] == pytest.approx(expected_mae)
+        assert "activity/running_count" not in metrics
+        assert "fidelity/acc_temporal_range_bias" not in metrics
+        assert "worst_activity_pair_rmse" in metrics
     finally:
         if root.exists():
             shutil.rmtree(root)
@@ -230,8 +231,21 @@ def test_product_evaluator_supports_all_augmentation_modes():
             cfg = _build_cfg(processed_root, mode=mode)
             evaluator = ProductEvaluator(cfg, label_map={"running": 0, "walking": 1}, device=torch.device("cpu"))
             metrics = evaluator.evaluate(StubGenerator(["acc", "gyr"]))
-            activity_count_keys = [key for key in metrics if key.startswith("activity/") and key.endswith("_count")]
-            assert sum(float(metrics[key]) for key in activity_count_keys) == 2.0
+            assert set(metrics).issuperset(
+                {
+                    "pair_rmse",
+                    "metric_mae_mean",
+                    "nn_distance_val_mean",
+                    "nn_distance_gap_val_minus_train",
+                    "centroid_drift_mean",
+                    "within_band_vector_rate",
+                    "diversity_pairwise_distance_mean",
+                    "std_ratio_mean",
+                    "std_ratio_drift_mean",
+                    "coverage_unique_nn_ratio",
+                    "worst_activity_pair_rmse",
+                }
+            )
             assert "nn_distance_val_mean" in metrics
     finally:
         if root.exists():
